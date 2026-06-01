@@ -1,9 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
+import os
 
 # Configure Google Gemini
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+api_key = st.secrets["GOOGLE_API_KEY"]
+genai.configure(api_key=api_key)
 
 # App Configuration
 st.set_page_config(page_title="FocusFlow", page_icon="⚡")
@@ -18,9 +19,13 @@ user_input = st.text_area("WHAT DO YOU NEED HELP WITH?")
 if st.button("Get Help"):
     if user_input:
         with st.spinner('FocusFlow is thinking...'):
-            prompt = f"You are a Best-Friend Coach. Mood: {mood}. Help the user with: {user_input}"
-            response = model.generate_content(prompt)
-            st.success("Here is your high-yield cheat sheet:")
-            st.write(response.text)
+            try:
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                prompt = f"You are a Best-Friend Coach. Mood: {mood}. Help the user with: {user_input}"
+                response = model.generate_content(prompt)
+                st.success("Here is your high-yield cheat sheet:")
+                st.write(response.text)
+            except Exception as e:
+                st.error(f"Error: {e}")
     else:
         st.warning("Please enter a topic!")
