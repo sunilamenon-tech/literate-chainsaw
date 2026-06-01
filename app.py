@@ -3,7 +3,7 @@ import google.generativeai as genai
 
 # Configure Google Gemini
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # App Configuration
 st.set_page_config(page_title="FocusFlow", page_icon="⚡")
