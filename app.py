@@ -23,7 +23,7 @@ if prompt := st.chat_input("What's on your mind?"):
 
     with st.chat_message("assistant"):
         # We define the model here, inside the function, to ensure it loads fresh
-        model = genai.GenerativeModelgemini-1.5-flash)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         full_prompt = "You are a Best-Friend Coach. Keep it short and empathetic: " + prompt
         response = model.generate_content(full_prompt)
         st.markdown(response.text)
