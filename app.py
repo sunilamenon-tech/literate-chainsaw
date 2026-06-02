@@ -1,5 +1,9 @@
 import streamlit as st
-import time
+import google.generativeai as genai
+
+# Configure Google Gemini
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # App Configuration
 st.set_page_config(page_title="FocusFlow", page_icon="⚡")
@@ -14,12 +18,24 @@ user_input = st.text_area("WHAT DO YOU NEED HELP WITH?")
 if st.button("Get Help"):
     if user_input:
         with st.spinner('FocusFlow is thinking...'):
-            time.sleep(2) # Simulates AI thinking
-            if "Stressed" in mood:
+            try:
+                # The "Pro" Prompt Logic
+                prompt = f"""
+                You are a top-tier tutor for JEE/NEET. 
+                The student is feeling: {mood}.
+                Topic to explain: {user_input}
+
+                Please provide a High-Yield Cheat Sheet including:
+                1. The 3 most important concepts (The 80/20 rule).
+                2. A simple, non-academic analogy to help visualize it.
+                3. One 'Check-your-knowledge' practice question with the answer.
+                Keep it encouraging and very concise.
+                """
+                
+                response = model.generate_content(prompt)
                 st.success("Here is your high-yield cheat sheet:")
-                st.write("Hey! Take a deep breath. 😮‍💨 I know Periodic Table feels overwhelming, but just focus on the 'Trends' (Ionization energy, Atomic radius). Don't memorize everything today. You’re doing great!")
-            else:
-                st.success("Here is your high-yield cheat sheet:")
-                st.write("Let's crush this! Focus on the exceptions in the table. You've got the momentum—let's keep it going! 🔥")
+                st.write(response.text)
+            except Exception as e:
+                st.error(f"Waiting for quota reset. Error: {e}")
     else:
         st.warning("Please enter a topic!")
