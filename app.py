@@ -19,12 +19,11 @@ user_input = st.text_area("WHAT DO YOU NEED HELP WITH?")
 if st.button("Get Help"):
     if user_input:
       with st.spinner('FocusFlow is thinking...'):
-            try:
-               model = genai.GenerativeModel('gemini-1.5-flash')
-                prompt = f"You are a Best-Friend Coach. Mood: {mood}. Help the user with: {user_input}"
-                response = model.generate_content(prompt)
-                st.success("Here is your high-yield cheat sheet:")
-                st.write(response.text)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            prompt = f"You are a Best-Friend Coach. Mood: {mood}. Help the user with: {user_input}"
+            response = model.generate_content(prompt)
+            st.success("Here is your high-yield cheat sheet:")
+            st.write(response.text)
             except Exception as e:
                 st.error(f"Error details: {e}")
                 st.write("Available models:")
