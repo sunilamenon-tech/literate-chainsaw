@@ -20,7 +20,7 @@ if st.button("Get Help"):
     if user_input:
       with st.spinner('FocusFlow is thinking...'):
             try:
-                model = genai.GenerativeModel('models/gemini-2.0-flash')
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 prompt = f"You are a Best-Friend Coach. Mood: {mood}. Help the user with: {user_input}"
                 response = model.generate_content(prompt)
                 st.success("Here is your high-yield cheat sheet:")
