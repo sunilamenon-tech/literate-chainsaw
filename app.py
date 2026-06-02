@@ -28,3 +28,5 @@ if prompt := st.chat_input("What's on your mind?"):
         response = model.generate_content(full_prompt)
         st.markdown(response.text)
         st.session_state.messages.append({"role": "assistant", "content": response.text})
+        st.markdown(response.text)
+        st.session_state.messages.append({"role": "assistant", "content": response.text})
