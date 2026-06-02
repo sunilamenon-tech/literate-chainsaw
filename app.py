@@ -1,30 +1,38 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Configure Google Gemini
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-
-# App Configuration
 st.set_page_config(page_title="FocusFlow", page_icon="⚡")
-st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {background-color: #FF6600; color: white;}</style>""", unsafe_allow_html=True)
+st.markdown("""<style>.stApp {background-color: #FFF9E6;}</style>""", unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 st.write("Your personal study companion. Let's crush it together. 💪")
 
-mood = st.radio("HOW ARE YOU FEELING?", ["Stressed (Need calm support)", "Focused (Let's go fast)"])
-user_input = st.text_area("WHAT DO YOU NEED HELP WITH?")
+# Configure AI
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-if st.button("Get Help"):
-    if user_input:
+# Initialize Chat History
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hey there! I'm your study coach. Feeling stressed or ready to focus today?"}
+    ]
+
+# Display Chat History
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# Accept Input
+if prompt := st.chat_input("What's on your mind?"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
         with st.spinner('FocusFlow is thinking...'):
-            try:
-                # Using the model name we found from your list
-                model = genai.GenerativeModel('models/gemini-2.5-flash')
-                prompt = f"You are a Best-Friend Coach. Mood: {mood}. Help the user with: {user_input}"
-                response = model.generate_content(prompt)
-                st.success("Here is your high-yield cheat sheet:")
-                st.write(response.text)
-            except Exception as e:
-                st.error(f"Error: {e}")
-    else:
-        st.warning("Please enter a topic!")
+            # Combine history into a context
+            context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+            response = model.generate_content(f"You are a Best-Friend Coach. Here is the conversation so far:\n{context}")
+            
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
