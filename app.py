@@ -14,7 +14,7 @@ if st.button("Get Help"):
         with st.spinner('FocusFlow is thinking...'):
             api_key = st.secrets["GOOGLE_API_KEY"]
             # We use the REST API directly - it is much more robust
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent?key={api_key}"
             payload = {
                 "contents": [{"parts": [{"text": f"You are a Best-Friend Coach. Mood: {mood}. Help the user with: {user_input}"}]}]
             }
