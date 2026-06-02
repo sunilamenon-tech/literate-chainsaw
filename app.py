@@ -1,32 +1,23 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Configure Google Gemini
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-st.set_page_config(page_title="FocusFlow", page_icon="⚡")
-st.markdown("""<style>.stApp {background-color: #FFF9E6;}</style>""", unsafe_allow_html=True)
+st.title("⚡ FocusFlow Debugger")
 
-st.title("⚡ FocusFlow")
-
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hey there! I'm your study coach. How are you feeling about your prep today?"}]
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-if prompt := st.chat_input("What's on your mind?"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        # We define the model here, inside the function, to ensure it loads fresh
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        full_prompt = "You are a Best-Friend Coach. Keep it short and empathetic: " + prompt
-        response = model.generate_content(full_prompt)
-        st.markdown(response.text)
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
-        st.markdown(response.text)
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+if st.button("Check Available Models & Chat"):
+    try:
+        # Get the first available model that supports generateContent
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        if not models:
+            st.error("No models found. Check your API Key permissions.")
+        else:
+            selected_model_name = models[0]
+            st.write(f"Using model: {selected_model_name}")
+            model = genai.GenerativeModel(selected_model_name)
+            response = model.generate_content("Hello! Are you working?")
+            st.success(f"Success! AI says: {response.text}")
+            
+    except Exception as e:
+        st.error(f"Error: {e}")
