@@ -61,4 +61,11 @@ if prompt := st.chat_input("What's on your mind?"):
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
             except Exception as e:
-                st.error(f"Error: {e}")
+                # If Flash hits a quota error, automatically try Pro
+                if "429" in str(e):
+                    model = genai.GenerativeModel('gemini-1.5-pro')
+                    response = model.generate_content(full_prompt)
+                    st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                else:
+                    st.error(f"Error: {e}")
