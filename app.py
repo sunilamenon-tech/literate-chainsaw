@@ -1,9 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Setup
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
 
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
 st.markdown("""<style>.stApp {background-color: #FFF9E6;}</style>""", unsafe_allow_html=True)
@@ -17,19 +15,16 @@ with st.sidebar:
     current_topic = st.selectbox("Subject", ["Maths", "Physics", "Chemistry", "Biology", "History", "English", "Other"])
     test_date = st.date_input("When is your test?")
     if st.button("Sync My Goal"):
-        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! I see you're prepping for {exam_goal}. Let's master {current_topic}. What's the biggest challenge?"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal}. Let's master {current_topic}. What's your biggest challenge?"}]
         st.rerun()
 
-# Initialize Chat
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hey! Set your goal in the sidebar and hit 'Sync My Goal' to begin!"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hey! Set your goal and hit 'Sync My Goal'!"}]
 
-# Display Chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat Logic
 if prompt := st.chat_input("What's on your mind?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -37,18 +32,16 @@ if prompt := st.chat_input("What's on your mind?"):
 
     with st.chat_message("assistant"):
         with st.spinner('FocusFlow is thinking...'):
-            # The context is constructed ONLY when the button is clicked
-            context = f"Goal: {exam_goal}. Test Date: {test_date}. Subject: {current_topic}."
-            
-            full_prompt = f"""
-            You are a Socratic Study Coach. 
-            Context: {context}. 
-            User asks: {prompt}.
-            
-            Task: Never give the full answer immediately. First, ask one challenging diagnostic question to check their understanding. 
-            Keep it encouraging and best-friend like.
-            """
-            
-            response = model.generate_content(full_prompt)
-            st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            try:
+                # DYNAMIC MODEL FINDER: This looks for what your API key is allowed to use
+                models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                model = genai.GenerativeModel(models[0]) # Picks the first one found
+                
+                context = f"Goal: {exam_goal}. Test Date: {test_date}. Subject: {current_topic}."
+                full_prompt = f"You are a Socratic Coach. Context: {context}. User asks: {prompt}. Ask a diagnostic question first, then provide a cheat sheet."
+                
+                response = model.generate_content(full_prompt)
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
+            except Exception as e:
+                st.error(f"Try a different model. Error: {e}")
