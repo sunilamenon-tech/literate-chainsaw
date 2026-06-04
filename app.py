@@ -37,7 +37,16 @@ with tab1:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.rerun()
 
-# TAB 2: UPLOAD
+# ... (Keep all your imports, st.set_page_config, and Sidebar code exactly as it is) ...
+
+# TABS
+tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
+
+# TAB 1: CHAT (Keep your existing chat logic here)
+with tab1:
+    # ... (Your existing Chat code block) ...
+
+# TAB 2: UPDATED VISION LOGIC
 with tab2:
     uploaded_file = st.file_uploader("Upload a diagram", type=["jpg", "png"])
     if uploaded_file and st.button("Analyze & Quiz Me!"):
@@ -51,30 +60,28 @@ with tab2:
             model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
             
             url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
-            smart_prompt = f"You are a Socratic coach. Context: {exam_goal}, {current_topic}. Analyze this image. 1. Explain. 2. Create a diagnostic question."
+            
+            # The strictly conversational Socratic prompt
+            smart_prompt = f"""
+            You are a supportive Socratic Study Coach for {exam_goal} students studying {current_topic}.
+            Analyze the uploaded image.
+            
+            STRICT RULES:
+            - Do not include any internal thoughts, meta-commentary, or instructions in parentheses.
+            - Speak ONLY to the student.
+            - Start by asking ONE specific question about the image to gauge what they see. 
+            - DO NOT provide the cheat sheet or full explanation yet. Wait for their response.
+            """
             
             payload = {"contents": [{"parts": [{"text": smart_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}}]}]}
             response = requests.post(url, json=payload).json()
-            st.markdown(response['candidates'][0]['content']['parts'][0]['text'])
-
-# AI PROCESSING (CHAT)
-if st.session_state.messages[-1]["role"] == "user":
-    with st.chat_message("assistant"):
-        with st.spinner('FocusFlow is thinking...'):
-            api_key = st.secrets["GOOGLE_API_KEY"]
-            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            models = requests.get(list_url).json()['models']
-            model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
-            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             
-            if "cheat sheet" in st.session_state.messages[-1]["content"].lower():
-                full_prompt = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}"
+            if 'candidates' in response:
+                answer = response['candidates'][0]['content']['parts'][0]['text']
+                st.markdown(answer)
             else:
-                full_prompt = f"Context: {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask one diagnostic question first."
-            
-            payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-            response = requests.post(url, json=payload).json()
-            answer = response['candidates'][0]['content']['parts'][0]['text']
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            st.rerun()
+                st.error("The AI had trouble reading that image. Try a clearer one!")
+
+# AI PROCESSING (CHAT) - KEEP THIS AT THE VERY END
+if st.session_state.messages[-1]["role"] == "user":
+    # ... (Keep your existing AI processing chat logic here) ...
