@@ -46,7 +46,18 @@ with tab2:
             bytes_data = uploaded_file.getvalue()
             b64_image = base64.b64encode(bytes_data).decode('utf-8')
             
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+           with st.spinner('FocusFlow is analyzing...'):
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            
+            # 1. Fetch available models first (just like we did for the chat)
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            models = requests.get(list_url).json()['models']
+            model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
+            
+            # 2. Use the dynamic model_name instead of hardcoding 'gemini-1.5-flash'
+            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+            
+            # ... (rest of your existing image payload code)
             smart_prompt = f"You are a JEE/NEET tutor. Context: {exam_goal}, {current_topic}. Analyze this image. 1. Explain the concepts. 2. Create a 'Rapid Fire' diagnostic question based on the image."
             
             payload = {"contents": [{"parts": [{"text": smart_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}}]}]}
