@@ -48,14 +48,17 @@ if prompt := st.chat_input("What's on your mind?"):
                 
                 # The Smart Socratic Prompt
                 full_prompt = f"""
-                You are a supportive Socratic Study Coach. Context: {context}. 
-                User message: {prompt}.
-                
-                Task:
-                1. If the user seems lost or explicitly asks for help/answer, provide a clear explanation and a high-yield cheat sheet.
-                2. If the user is answering well, ask a challenging follow-up question to test their understanding.
-                3. Always keep the tone encouraging and best-friend like.
-                """
+                You are FocusFlow, a Socratic Study Coach. 
+            Context: {context}. 
+            User asks: {prompt}.
+            
+            STRICT RULES:
+            1. You are NOT an answer machine. You are a Socratic tutor.
+            2. If the user asks for help with a topic, you MUST ask a diagnostic question to gauge their current understanding.
+            3. DO NOT provide the full cheat sheet/answer in your first reply. Wait for the user to answer your diagnostic question.
+            4. If the user says "I don't know" or "Just give me the answer", then and only then provide the cheat sheet.
+            5. Keep your tone encouraging and best-friend like.
+            """
                 
                 response = model.generate_content(full_prompt)
                 st.markdown(response.text)
