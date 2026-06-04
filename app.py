@@ -1,8 +1,13 @@
 import streamlit as st
-import requests
+import google.generativeai as genai
+from PIL import Image
+
+# Setup
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
-st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {background-color: #FF6600; color: white;}</style>""", unsafe_allow_html=True)
+st.markdown("""<style>.stApp {background-color: #FFF9E6;}</style>""", unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
@@ -18,45 +23,34 @@ with st.sidebar:
 
 # Initialize Chat
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal in the sidebar and hit 'Sync My Goal' to begin!"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hi! Upload an image or ask me anything!"}]
+
+# File Uploader
+uploaded_file = st.file_uploader("Upload a diagram or note (Optional)", type=["jpg", "jpeg", "png"])
 
 # Display Chat
-for i, message in enumerate(st.session_state.messages):
+for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        
-        # Auto-hide logic: Only show button if message is from AI and NOT already a cheat sheet
-        if message["role"] == "assistant" and i > 0:
-            if "cheat sheet" not in message["content"].lower():
-                if st.button("⚡ Give me the Cheat Sheet!", key=f"btn_{i}"):
-                    st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
-                    st.rerun()
 
 # Chat Logic
 if prompt := st.chat_input("What's on your mind?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.rerun()
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-# AI Processing
-if st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
-        with st.spinner('FocusFlow is thinking...'):
-            api_key = st.secrets["GOOGLE_API_KEY"]
-            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            models = requests.get(list_url).json()['models']
-            model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
+        with st.spinner('FocusFlow is analyzing...'):
+            context = f"Goal: {exam_goal}. Test Date: {test_date}. Subject: {current_topic}."
             
-            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+            # Prepare content
+            content_parts = [f"You are a Socratic coach. Context: {context}. User asks: {prompt}. Ask diagnostic questions, then cheat sheet."]
             
-            # Smart Prompt Logic
-            if "cheat sheet" in st.session_state.messages[-1]["content"].lower():
-                full_prompt = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}"
-            else:
-                full_prompt = f"Context: {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask one diagnostic question first."
-            
-            payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-            response = requests.post(url, json=payload).json()
-            answer = response['candidates'][0]['content']['parts'][0]['text']
-            
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            st.rerun()
+            if uploaded_file:
+                img = Image.open(uploaded_file)
+                content_parts.append(img)
+                st.image(img, caption="Analyzing your image...", use_column_width=True)
+
+            response = model.generate_content(content_parts)
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
