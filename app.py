@@ -32,7 +32,7 @@ if prompt := st.chat_input("What's on your mind?"):
         with st.spinner('FocusFlow is thinking...'):
             api_key = st.secrets["GOOGLE_API_KEY"]
             # This URL is the standard endpoint that works for almost all keys
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
             
             payload = {
                 "contents": [{"parts": [{"text": f"Context: {exam_goal}, {current_topic}. User: {prompt}. Be a Socratic coach, ask a question first."}]}]
