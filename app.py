@@ -6,34 +6,45 @@ st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {back
 
 st.title("⚡ FocusFlow")
 
-# SIDEBAR: Context & Sync
+# SIDEBAR
 with st.sidebar:
     st.header("🎯 Your Study Context")
-    
-    # Updated Goals
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "NEET", "Class 10", "Class 12", "Other"])
-    
-    # Updated Subjects
     current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "Hindi"])
-    
-    # Date Selection
     test_date = st.date_input("When is your test?")
-    
-    # Sync Button
     if st.button("Sync My Goal"):
-        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal} {current_topic}. Ready to master this?"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal}. Let's master {current_topic}."}]
         st.rerun()
 
 # INITIALIZE CHAT
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal in the sidebar and hit 'Sync My Goal' to begin!"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
 
-# CHAT DISPLAY
+# DISPLAY CHAT
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# CHAT INPUT
+# CHAT LOGIC (THE AI BRAIN)
 if prompt := st.chat_input("Ask a question..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.rerun()
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    
+    with st.chat_message("assistant"):
+        with st.spinner('FocusFlow is thinking...'):
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            # Auto-find model
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            models = requests.get(list_url).json()['models']
+            model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
+            
+            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+            
+            full_prompt = f"Context: {exam_goal}, {current_topic}, Test on {test_date}. User asks: {prompt}. Be a Socratic coach, ask one diagnostic question first."
+            payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+            
+            response = requests.post(url, json=payload).json()
+            answer = response['candidates'][0]['content']['parts'][0]['text']
+            st.markdown(answer)
+            st.session_state.messages.append({"role": "assistant", "content": answer})
