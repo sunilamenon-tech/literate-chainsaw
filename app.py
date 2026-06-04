@@ -51,8 +51,15 @@ with tab2:
             
             payload = {"contents": [{"parts": [{"text": smart_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}}]}]}
             response = requests.post(url, json=payload).json()
-            answer = response['candidates'][0]['content']['parts'][0]['text']
-            st.markdown(answer)
+            
+            # SAFE CHECK: See if 'candidates' exists before trying to read it
+            if 'candidates' in response and len(response['candidates']) > 0:
+                answer = response['candidates'][0]['content']['parts'][0]['text']
+                st.markdown(answer)
+            elif 'error' in response:
+                st.error(f"AI Blocked the response: {response['error'].get('message', 'Unknown Error')}")
+            else:
+                st.error(f"Unexpected response format: {response}")
 
 # AI Processing (Chat)
 if st.session_state.messages[-1]["role"] == "user":
