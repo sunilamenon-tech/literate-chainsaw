@@ -25,18 +25,19 @@ for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         
-        # Place button under AI messages (except the first welcome message)
+        # Auto-hide logic: Only show button if message is from AI and NOT already a cheat sheet
         if message["role"] == "assistant" and i > 0:
-            if st.button("⚡ Give me the Cheat Sheet!", key=f"btn_{i}"):
-                st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
-                st.rerun()
+            if "cheat sheet" not in message["content"].lower():
+                if st.button("⚡ Give me the Cheat Sheet!", key=f"btn_{i}"):
+                    st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
+                    st.rerun()
 
 # Chat Logic
 if prompt := st.chat_input("What's on your mind?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.rerun() # Rerun to display the user message and trigger assistant response
+    st.rerun()
 
-# Handle AI Response
+# AI Processing
 if st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
         with st.spinner('FocusFlow is thinking...'):
@@ -47,6 +48,7 @@ if st.session_state.messages[-1]["role"] == "user":
             
             url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             
+            # Smart Prompt Logic
             if "cheat sheet" in st.session_state.messages[-1]["content"].lower():
                 full_prompt = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}"
             else:
