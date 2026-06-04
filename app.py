@@ -2,55 +2,44 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# Setup
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="centered")
 st.markdown("""<style>.stApp {background-color: #FFF9E6;}</style>""", unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
-# SIDEBAR
+# SIDEBAR: Control Panel
 with st.sidebar:
-    st.header("🎯 Your Study Context")
-    exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
-    current_topic = st.selectbox("Subject", ["Maths", "Physics", "Chemistry", "Biology", "History", "English", "Other"])
-    test_date = st.date_input("When is your test?")
-    if st.button("Sync My Goal"):
-        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal}. Let's master {current_topic}."}]
+    st.header("🎯 Study Context")
+    exam_goal = st.selectbox("Exam", ["JEE Main", "NEET", "Boards", "Other"])
+    current_topic = st.selectbox("Subject", ["Maths", "Physics", "Chemistry", "Biology", "Other"])
+    if st.button("Sync Context"):
+        st.session_state.messages = [{"role": "assistant", "content": f"Ready to master {current_topic} for {exam_goal}!"}]
         st.rerun()
 
-# Initialize Chat
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hi! Upload an image or ask me anything!"}]
+# MAIN TABS: Cleaner Layout
+tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
 
-# File Uploader
-uploaded_file = st.file_uploader("Upload a diagram or note (Optional)", type=["jpg", "jpeg", "png"])
+with tab1:
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": "Hi! Ask me anything about your studies."}]
+    
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-# Display Chat
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    if prompt := st.chat_input("Ask a question..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.rerun()
 
-# Chat Logic
-if prompt := st.chat_input("What's on your mind?"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        with st.spinner('FocusFlow is analyzing...'):
-            context = f"Goal: {exam_goal}. Test Date: {test_date}. Subject: {current_topic}."
-            
-            # Prepare content
-            content_parts = [f"You are a Socratic coach. Context: {context}. User asks: {prompt}. Ask diagnostic questions, then cheat sheet."]
-            
-            if uploaded_file:
-                img = Image.open(uploaded_file)
-                content_parts.append(img)
-                st.image(img, caption="Analyzing your image...", use_column_width=True)
-
-            response = model.generate_content(content_parts)
+with tab2:
+    uploaded_file = st.file_uploader("Upload an image for analysis", type=["jpg", "png"])
+    if uploaded_file:
+        st.image(uploaded_file, use_column_width=True)
+        if st.button("Analyze Image"):
+            img = Image.open(uploaded_file)
+            # Send to AI
+            response = model.generate_content(["Explain this image as a study coach", img])
             st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
