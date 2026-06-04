@@ -7,7 +7,7 @@ st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {back
 
 st.title("⚡ FocusFlow")
 
-# SIDEBAR: Context
+# SIDEBAR
 with st.sidebar:
     st.header("🎯 Your Study Context")
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
@@ -20,7 +20,7 @@ with st.sidebar:
 # TABS
 tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
 
-# TAB 1: Chat Logic
+# TAB 1: CHAT
 with tab1:
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
@@ -37,42 +37,27 @@ with tab1:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.rerun()
 
-# TAB 2: Vision Logic
+# TAB 2: UPLOAD
 with tab2:
-    uploaded_file = st.file_uploader("Upload a diagram to master", type=["jpg", "png"])
+    uploaded_file = st.file_uploader("Upload a diagram", type=["jpg", "png"])
     if uploaded_file and st.button("Analyze & Quiz Me!"):
         with st.spinner('FocusFlow is analyzing...'):
             api_key = st.secrets["GOOGLE_API_KEY"]
             bytes_data = uploaded_file.getvalue()
             b64_image = base64.b64encode(bytes_data).decode('utf-8')
             
-           with st.spinner('FocusFlow is analyzing...'):
-            api_key = st.secrets["GOOGLE_API_KEY"]
-            
-            # 1. Fetch available models first (just like we did for the chat)
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
             models = requests.get(list_url).json()['models']
             model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
             
-            # 2. Use the dynamic model_name instead of hardcoding 'gemini-1.5-flash'
             url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
-            
-            # ... (rest of your existing image payload code)
-            smart_prompt = f"You are a JEE/NEET tutor. Context: {exam_goal}, {current_topic}. Analyze this image. 1. Explain the concepts. 2. Create a 'Rapid Fire' diagnostic question based on the image."
+            smart_prompt = f"You are a Socratic coach. Context: {exam_goal}, {current_topic}. Analyze this image. 1. Explain. 2. Create a diagnostic question."
             
             payload = {"contents": [{"parts": [{"text": smart_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}}]}]}
             response = requests.post(url, json=payload).json()
-            
-            # SAFE CHECK: See if 'candidates' exists before trying to read it
-            if 'candidates' in response and len(response['candidates']) > 0:
-                answer = response['candidates'][0]['content']['parts'][0]['text']
-                st.markdown(answer)
-            elif 'error' in response:
-                st.error(f"AI Blocked the response: {response['error'].get('message', 'Unknown Error')}")
-            else:
-                st.error(f"Unexpected response format: {response}")
+            st.markdown(response['candidates'][0]['content']['parts'][0]['text'])
 
-# AI Processing (Chat)
+# AI PROCESSING (CHAT)
 if st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
         with st.spinner('FocusFlow is thinking...'):
@@ -80,7 +65,6 @@ if st.session_state.messages[-1]["role"] == "user":
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
             models = requests.get(list_url).json()['models']
             model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
-            
             url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             
             if "cheat sheet" in st.session_state.messages[-1]["content"].lower():
@@ -91,6 +75,6 @@ if st.session_state.messages[-1]["role"] == "user":
             payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
             response = requests.post(url, json=payload).json()
             answer = response['candidates'][0]['content']['parts'][0]['text']
-            
+            st.markdown(answer)
             st.session_state.messages.append({"role": "assistant", "content": answer})
             st.rerun()
