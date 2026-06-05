@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import base64
-from datetime import date
 
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
 st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {background-color: #FF6600; color: white;}</style>""", unsafe_allow_html=True)
@@ -13,16 +12,10 @@ with st.sidebar:
     st.header("🎯 Your Study Context")
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
     current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "Other"])
-    test_date = st.date_input("When is your test?", min_value=date.today())
-    
-    days_left = (test_date - date.today()).days
-    tension = "High 🚨" if days_left < 7 else ("Medium ⚠️" if days_left < 20 else "Low 😌")
-    
+    test_date = st.date_input("When is your test?")
     if st.button("Sync My Goal"):
         st.session_state.messages = [{"role": "assistant", "content": f"Context updated for {exam_goal}. Let's master {current_topic}!"}]
         st.rerun()
-        
-    st.markdown(f"--- \n### 📊 Your Status \n- **Tension:** {tension} \n- **Days Left:** {days_left}")
 
 # TABS
 tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
@@ -35,10 +28,12 @@ with tab1:
     for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message["role"] == "assistant" and i > 0 and "cheat sheet" not in message["content"].lower():
-                if st.button("⚡ Give me the Cheat Sheet!", key=f"btn_{i}"):
-                    st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
-                    st.rerun()
+            # The logic that only shows the button if the AI hasn't given the cheat sheet yet
+            if message["role"] == "assistant" and i > 0:
+                if "cheat sheet" not in message["content"].lower() and "formula" not in message["content"].lower():
+                    if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
+                        st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
+                        st.rerun()
 
     if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -51,20 +46,17 @@ with tab2:
         with st.spinner('FocusFlow is analyzing...'):
             api_key = st.secrets["GOOGLE_API_KEY"]
             b64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
-            
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
             models = requests.get(list_url).json()['models']
             model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
-            
             url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
-            smart_prompt = f"Context: {exam_goal}, {current_topic}. Analyze this image. Ask ONE diagnostic question first."
+            smart_prompt = f"Analyze this image. Ask ONE diagnostic question first. Do not reveal the answer yet."
             payload = {"contents": [{"parts": [{"text": smart_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}}]}]}
-            
             response = requests.post(url, json=payload).json()
             if 'candidates' in response:
                 st.markdown(response['candidates'][0]['content']['parts'][0]['text'])
 
-# AI PROCESSING (CHAT)
+# AI PROCESSING
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
         with st.spinner('FocusFlow is thinking...'):
@@ -75,9 +67,9 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             
             if "cheat sheet" in st.session_state.messages[-1]["content"].lower():
-                full_prompt = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}"
+                full_prompt = f"Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}"
             else:
-                full_prompt = f"Context: {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask one diagnostic question first."
+                full_prompt = f"Context: {exam_goal}, {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask one diagnostic question first."
             
             payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
             response = requests.post(url, json=payload).json()
