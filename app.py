@@ -8,20 +8,23 @@ st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {back
 
 st.title("⚡ FocusFlow")
 
-# --- SIDEBAR: Context & Growth Engine ---
+# SIDEBAR: Context & Sync
 with st.sidebar:
     st.header("🎯 Your Study Context")
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
     current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "Other"])
     test_date = st.date_input("When is your test?")
     
+    # By clicking this, we force the whole app to refresh with the new date
     if st.button("Sync My Goal"):
         st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal}. Let's master {current_topic}!"}]
         st.rerun()
 
-    # GROWTH ENGINE
+    # GROWTH ENGINE - Now it recalculates every time Sync is clicked
+    from datetime import date
     days_left = (test_date - date.today()).days
     tension = "High" if days_left < 7 else ("Medium" if days_left < 20 else "Low")
+    
     if "q_count" not in st.session_state: st.session_state.q_count = 0
     archetype = "Explorer" if st.session_state.q_count < 5 else ("Scholar" if st.session_state.q_count < 15 else "Master")
     
