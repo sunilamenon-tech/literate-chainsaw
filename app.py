@@ -56,21 +56,33 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
     with st.chat_message("assistant"):
         with st.spinner('FocusFlow is thinking...'):
             api_key = st.secrets["GOOGLE_API_KEY"]
+            # 1. Fetch models reliably
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            models = requests.get(list_url).json()['models']
-            model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
-            
-            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
-            
-            if "cheat sheet" in st.session_state.messages[-1]["content"].lower():
-                full_prompt = f"Context: {current_topic}. Provide a concise cheat sheet for: {st.session_state.messages[-2]['content']}"
-            else:
-                full_prompt = f"Context: {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask one diagnostic question first."
-            
-            payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-            response = requests.post(url, json=payload).json()
-            if 'candidates' in response:
-                answer = response['candidates'][0]['content']['parts'][0]['text']
-                st.markdown(answer)
+            try:
+                models_data = requests.get(list_url).json()
+                model_name = next(m['name'] for m in models_data['models'] if 'generateContent' in m['supportedGenerationMethods'])
+                url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+                
+                # 2. Logic for Prompt
+                user_msg = st.session_state.messages[-1]["content"].lower()
+                if "cheat sheet" in user_msg or "give me the answer" in user_msg:
+                    full_prompt = f"Context: {current_topic}. Provide a concise cheat sheet for: {st.session_state.messages[-2]['content']}"
+                else:
+                    full_prompt = f"You are a Socratic tutor. Context: {exam_goal}, {current_topic}. User: {st.session_state.messages[-1]['content']}. Ask ONE diagnostic question first."
+                
+                # 3. Call API
+                payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+                response = requests.post(url, json=payload).json()
+                
+                # 4. Extract Answer Safely
+                if 'candidates' in response and len(response['candidates']) > 0:
+                    answer = response['candidates'][0]['content']['parts'][0]['text']
+                    st.markdown(answer)
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    st.rerun()
+                else:
+                    st.error("The AI didn't return an answer. It might be a safety block. Try rephrasing.")
+            except Exception as e:
+                st.error(f"Engine Error: {e}")
                 st.session_state.messages.append({"role": "assistant", "content": answer})
                 st.rerun()
