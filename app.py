@@ -1,21 +1,28 @@
 import streamlit as st
 import requests
 import base64
+from datetime import date # Added this back
 
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
 st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {background-color: #FF6600; color: white;}</style>""", unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
-# SIDEBAR
+# SIDEBAR: Context, Sync & Tension Meter
 with st.sidebar:
     st.header("🎯 Your Study Context")
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
     current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "Other"])
-    test_date = st.date_input("When is your test?")
+    test_date = st.date_input("When is your test?", min_value=date.today())
+    
     if st.button("Sync My Goal"):
-        st.session_state.messages = [{"role": "assistant", "content": f"Context updated for {exam_goal}. Let's master {current_topic}!"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal}. Let's master {current_topic}!"}]
         st.rerun()
+        
+    # RESTORED TENSION METER
+    days_left = (test_date - date.today()).days
+    tension = "High 🚨" if days_left < 7 else ("Medium ⚠️" if days_left < 20 else "Low 😌")
+    st.markdown(f"--- \n### 📊 Your Status \n- **Tension:** {tension} \n- **Days Left:** {days_left}")
 
 # INITIALIZE CHAT
 if "messages" not in st.session_state:
@@ -61,7 +68,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             elif "cheat sheet" in user_msg or "just give me" in user_msg:
                 full_prompt = f"Context: {current_topic}. Provide a concise, high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Include key formulas."
             else:
-                full_prompt = f"Context: {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask ONE diagnostic question to start."
+                full_prompt = f"Context: {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask one diagnostic question to start."
             
             url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
