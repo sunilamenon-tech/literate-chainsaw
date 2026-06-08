@@ -42,29 +42,42 @@ with tab1:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.rerun()
 
-    # AI PROCESSING
-    if len(st.session_state.messages) > 0 and st.session_state.messages[-1]["role"] == "user":
-        with st.chat_message("assistant"):
-            with st.spinner('FocusFlow is thinking...'):
-                api_key = st.secrets["GOOGLE_API_KEY"]
-                list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-                models = requests.get(list_url).json()['models']
-                model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
-                url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+    # AI PROCESSING (CHAT)
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    with st.chat_message("assistant"):
+        with st.spinner('FocusFlow is thinking...'):
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            models = requests.get(list_url).json()['models']
+            model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
+            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+            
+            user_msg = st.session_state.messages[-1]["content"].lower()
+            
+            # THE LOGIC FLOW
+            if "cheat sheet" in user_msg or "just give me" in user_msg or "explain" in user_msg:
+                full_prompt = f"""
+                Context: {current_topic}. 
+                The user has requested the full explanation or cheat sheet.
+                Provide a concise, high-yield summary including formulas and key points.
+                Do not ask a follow-up question here.
+                """
+            else:
+                full_prompt = f"""
+                You are an elite, critical-thinking Study Mentor. Context: {exam_goal}, {current_topic}.
+                User message: {st.session_state.messages[-1]['content']}.
                 
-                user_msg = st.session_state.messages[-1]["content"].lower()
-                if "cheat sheet" in user_msg or "just give me" in user_msg:
-                    full_prompt = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct."
-                else:
-                    full_prompt = f"Context: {current_topic}. User: {st.session_state.messages[-1]['content']}. Be a Socratic coach, ask ONE diagnostic question first. Do not agree immediately."
-                
-                payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-                response = requests.post(url, json=payload).json()
-                
-                if 'candidates' in response and response['candidates']:
-                    answer = response['candidates'][0]['content']['parts'][0]['text']
-                    st.markdown(answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
-                    st.rerun()
-                else:
-                    st.error("I'm having trouble connecting to the AI. Please click 'Sync My Goal' and try again!")
+                YOUR RULES:
+                1. NEVER start by agreeing with the user. If they are wrong, challenge their assumption immediately.
+                2. Explain the core concept concisely.
+                3. Ask ONE diagnostic follow-up question to test their understanding.
+                4. DO NOT provide the cheat sheet or full answer to the question yet. Wait for the user to signal they are stuck.
+                """
+            
+            payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+            response = requests.post(url, json=payload).json()
+            if 'candidates' in response:
+                answer = response['candidates'][0]['content']['parts'][0]['text']
+                st.markdown(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                st.rerun()
