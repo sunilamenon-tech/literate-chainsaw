@@ -31,13 +31,23 @@ with st.sidebar:
 tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
 
 # TAB 1: CHAT
+# TAB 1: CHAT
 with tab1:
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
     
-    for message in st.session_state.messages:
+    for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            st.markdown(message["content"].replace("[QUIZ_ACTIVE]", "")) # Hide the tag from user
+            
+            # SHOW BUTTON ONLY IF:
+            # 1. AI is the sender.
+            # 2. The AI marked this message with [QUIZ_ACTIVE] (meaning it asked a question).
+            # 3. User hasn't already asked for the cheat sheet.
+            if message["role"] == "assistant" and i > 0 and "[QUIZ_ACTIVE]" in message["content"]:
+                if st.button("⚡ Give me the Cheat Sheet!", key=f"btn_{i}"):
+                    st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
+                    st.rerun()
 
     if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
