@@ -71,7 +71,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 1. NEVER start by agreeing with the user. If they are wrong, challenge their assumption immediately.
                 2. Explain the core concept concisely.
                 3. Ask ONE diagnostic follow-up question to test their understanding.
-                4. DO NOT provide the cheat sheet or full answer to the question yet. Wait for the user to signal they are stuck.
+                4. DO NOT provide the button Stuck? Get a hint/ cheat sheet or full answer to the question yet. Wait for the user to signal they are stuck.
                 """
             
             payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
