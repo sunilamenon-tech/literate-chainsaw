@@ -8,7 +8,7 @@ st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {back
 
 st.title("⚡ FocusFlow")
 
-# SIDEBAR: Context & Sync
+# SIDEBAR: Context, Sync & Tension Meter
 with st.sidebar:
     st.header("🎯 Your Study Context")
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
@@ -31,13 +31,17 @@ with tab1:
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
     
+    # DISPLAY CHAT + SMART BUTTON
     for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message["role"] == "assistant" and i > 0 and "cheat sheet" not in message["content"].lower():
-                if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
-                    st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
-                    st.rerun()
+            
+            # Button logic: Only appears if AI asked a question (meaning it's in coaching mode)
+            if message["role"] == "assistant" and i > 0:
+                if "?" in message["content"] and "cheat sheet" not in message["content"].lower():
+                    if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
+                        st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
+                        st.rerun()
 
     if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -48,8 +52,7 @@ with tab2:
     if uploaded_file := st.file_uploader("Upload a diagram", type=["jpg", "png"]):
         st.image(uploaded_file, use_column_width=True)
         if st.button("Analyze & Quiz Me!"):
-            # (Your existing vision logic remains here)
-            st.rerun()
+            st.warning("Analysis feature is under maintenance. Please use the Chat tab!")
 
 # AI PROCESSING (CHAT)
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
@@ -59,27 +62,26 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
             models = requests.get(list_url).json()['models']
             model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
+            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             
-            # THE NEW RADICAL TRUTH PROMPT
+            # The "Radical Truth" Prompt
             user_msg = st.session_state.messages[-1]["content"].lower()
-            
             if "cheat sheet" in user_msg or "give me the answer" in user_msg:
-                full_prompt = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct."
+                full_prompt = f"Context: {current_topic}. Provide a concise high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct."
             else:
                 full_prompt = f"""
                 You are FocusFlow, an elite Study Mentor. Context: {exam_goal}, {current_topic}.
-                User says: {st.session_state.messages[-1]['content']}.
+                User message: {st.session_state.messages[-1]['content']}.
                 
                 RULES:
-                1. Never start with an agreement. Challenge the user's assumptions or expose gaps in their thinking first.
-                2. If the user is wrong, say: 'I disagree because...'. Provide the alternative. Explain the downside of their approach.
-                3. Lead with the uncomfortable truth/answer. No warm-up paragraphs.
-                4. Match the user's tone. No 'As an AI' filler.
+                1. Never start with an agreement. Challenge the user's assumptions first.
+                2. If the user is wrong, disagree and provide the correct alternative.
+                3. Lead with the truth. No warm-up paragraphs.
+                4. Ask ONE diagnostic question first.
                 """
             
             payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-            response = requests.post(f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}", json=payload).json()
-            
+            response = requests.post(url, json=payload).json()
             if 'candidates' in response:
                 answer = response['candidates'][0]['content']['parts'][0]['text']
                 st.markdown(answer)
