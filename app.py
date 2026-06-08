@@ -33,12 +33,7 @@ with tab1:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             # Only show button if AI has spoken, it contains a question, and no cheat sheet yet
-            if message["role"] == "assistant" and "?" in message["content"] and "cheat sheet" not in message["content"].lower():
-                if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
-                    st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
-                    st.rerun()
-
-    if prompt := st.chat_input("Ask a question..."):
+            if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.rerun()
 
