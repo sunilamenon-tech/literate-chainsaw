@@ -17,27 +17,23 @@ with st.sidebar:
     if st.button("Sync My Goal"):
         st.session_state.messages = [{"role": "assistant", "content": f"Context updated for {exam_goal}. Let's master {current_topic}!"}]
         st.rerun()
-    
-    days_left = (test_date - date.today()).days
-    tension = "High 🚨" if days_left < 7 else ("Medium ⚠️" if days_left < 20 else "Low 😌")
-    st.markdown(f"--- \n### 📊 Your Status \n- **Tension:** {tension} \n- **Days Left:** {days_left}")
 
-# TABS
-tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
+# INITIALIZE CHAT
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
 
-with tab1:
-    if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
-    
-    for i, message in enumerate(st.session_state.messages):
+# TAB 1: CHAT DISPLAY
+with st.container():
+    for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            # Only show button if AI has spoken, it contains a question, and no cheat sheet yet
-            if prompt := st.chat_input("Ask a question..."):
+
+    # CHAT INPUT
+    if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.rerun()
 
-    # AI PROCESSING (CHAT)
+# AI PROCESSING
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
         with st.spinner('FocusFlow is thinking...'):
@@ -45,31 +41,18 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
             models = requests.get(list_url).json()['models']
             model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
-            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             
             user_msg = st.session_state.messages[-1]["content"].lower()
             
-            # THE LOGIC FLOW
+            # LOGIC:
             if "cheat sheet" in user_msg or "just give me" in user_msg or "explain" in user_msg:
-                full_prompt = f"""
-                Context: {current_topic}. 
-                The user has requested the full explanation or cheat sheet.
-                Provide a concise, high-yield summary including formulas and key points.
-                Do not ask a follow-up question here.
-                """
+                full_prompt = f"Context: {exam_goal}, {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct."
             else:
-                full_prompt = f"""
-                You are an elite, critical-thinking Study Mentor. Context: {exam_goal}, {current_topic}.
-                User message: {st.session_state.messages[-1]['content']}.
-                
-                YOUR RULES:
-                1. NEVER start by agreeing with the user. If they are wrong, challenge their assumption immediately.
-                2. Explain the core concept concisely.
-                3. Ask ONE diagnostic follow-up question to test their understanding.
-                4. DO NOT provide the button Stuck? Get a hint/ cheat sheet or full answer to the question yet. Wait for the user to signal they are stuck.
-                """
+                full_prompt = f"Context: {exam_goal}, {current_topic}. User: {user_msg}. Be a Socratic coach, ask ONE diagnostic question first to start. Do not give the answer yet."
             
+            url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
             payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+            
             response = requests.post(url, json=payload).json()
             if 'candidates' in response:
                 answer = response['candidates'][0]['content']['parts'][0]['text']
