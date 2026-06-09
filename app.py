@@ -40,27 +40,21 @@ if prompt := st.chat_input("Ask a question..."):
 # AI PROCESSING
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
-        with st.spinner('FocusFlow is thinking...'):
+        with st.spinner('Thinking...'):
             try:
                 api_key = st.secrets["GOOGLE_API_KEY"]
+                # We use the simplest possible URL for the model
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
-                # Logic to determine persona
-                user_msg = st.session_state.messages[-1]["content"].lower()
-                if any(x in user_msg for x in ["cheat sheet", "give me the explanation"]):
-                    prompt_text = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct."
-                else:
-                    prompt_text = f"Context: {current_topic}. User: {user_msg}. Rules: Act as a challenging coach. Ask ONE diagnostic question to check understanding. Do not agree immediately."
+                payload = {"contents": [{"parts": [{"text": st.session_state.messages[-1]["content"]}]}]}
                 
-                response = requests.post(url, json={"contents": [{"parts": [{"text": prompt_text}]}]}, timeout=30)
-                data = response.json()
+                response = requests.post(url, json=payload).json()
                 
-                if 'candidates' in data and data['candidates']:
-                    answer = data['candidates'][0]['content']['parts'][0]['text']
+                if 'candidates' in response and response['candidates']:
+                    answer = response['candidates'][0]['content']['parts'][0]['text']
                     st.markdown(answer)
                     st.session_state.messages.append({"role": "assistant", "content": answer})
-                    st.rerun()
                 else:
-                    st.error("I'm ready to answer! Could you please try asking that again?")
+                    st.error(f"Debug: {response}") # This will tell us EXACTLY what Google says
             except Exception as e:
-                st.error(f"Connection issue. Please try again. ({e})")
+                st.error(f"Error: {e}")
