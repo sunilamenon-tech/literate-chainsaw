@@ -2,53 +2,72 @@ import streamlit as st
 import requests
 from datetime import date
 
+# PAGE CONFIG
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
 st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {background-color: #FF6600; color: white;}</style>""", unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
-# 1. SIDEBAR (The Control Panel)
+# SIDEBAR
 with st.sidebar:
     st.header("🎯 Your Study Context")
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
     current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "Other"])
-    
-    # Date logic: Only show if NOT Other
     test_date = None
     if exam_goal != "Other":
         test_date = st.date_input("When is your test?", min_value=date.today())
     
     if st.button("Sync My Goal"):
-        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Ready to master {current_topic}!"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal}. Let's master {current_topic}!"}]
         st.rerun()
 
-    # TENSION METER (Appears only if date exists)
     if test_date:
         days_left = (test_date - date.today()).days
         tension = "High 🚨" if days_left < 7 else ("Medium ⚠️" if days_left < 20 else "Low 😌")
         st.markdown(f"--- \n### 📊 Your Status \n- **Tension:** {tension} \n- **Days Left:** {days_left}")
 
-# 2. CHAT HISTORY
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
+# TABS
+tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# TAB 1: CHAT
+with tab1:
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
+    
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-# 3. CHAT INPUT & AI PROCESSING
-# AI PROCESSING
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-    with st.chat_message("assistant"):
-        with st.spinner('FocusFlow is thinking...'):
-            user_msg = st.session_state.messages[-1]["content"].lower()
+    if prompt := st.chat_input("Ask a question..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        with st.chat_message("user"):
+            st.markdown(prompt)
             
-            # This simulates the AI tutor perfectly without needing a blocked API
-            if any(x in user_msg for x in ["cheat sheet", "give me", "explain"]):
-                answer = f"**{current_topic.upper()} Cheat Sheet:** \n1. Core Principle: Photosynthesis converts light energy into chemical energy (Glucose). \n2. Formula: 6CO2 + 6H2O + Light -> C6H12O6 + 6O2. \n3. Pro-Tip: Remember that the light-dependent reaction happens in the thylakoids!"
-            else:
-                answer = f"That's a great question about {current_topic}! To help you master this for your {exam_goal} prep, think about this: What do you think is the role of Chlorophyll in this process?"
-            
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            st.rerun()
+        with st.chat_message("assistant"):
+            with st.spinner('Thinking...'):
+                try:
+                    # AI LOGIC
+                    api_key = st.secrets["GOOGLE_API_KEY"]
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                    
+                    if any(x in prompt.lower() for x in ["cheat sheet", "give me", "explain"]):
+                        full_prompt = f"Context: {current_topic}. Provide a high-yield cheat sheet for: {prompt}. Be direct."
+                    else:
+                        full_prompt = f"Context: {exam_goal}, {current_topic}. User: {prompt}. Rules: Act as a Socratic coach, ask ONE diagnostic question."
+                    
+                    response = requests.post(url, json={"contents": [{"parts": [{"text": full_prompt}]}]}).json()
+                    
+                    if 'candidates' in response:
+                        answer = response['candidates'][0]['content']['parts'][0]['text']
+                        st.markdown(answer)
+                        st.session_state.messages.append({"role": "assistant", "content": answer})
+                    else:
+                        st.error("I'm having trouble connecting to the AI. Please try again!")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        st.rerun()
+
+# TAB 2: UPLOAD
+with tab2:
+    st.warning("Analysis feature is under maintenance. Please use the Chat tab!")
