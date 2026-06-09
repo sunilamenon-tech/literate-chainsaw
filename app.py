@@ -1,15 +1,13 @@
 import streamlit as st
 import requests
-import base64
 from datetime import date
 
-# 1. CONFIG
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
 st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {background-color: #FF6600; color: white;}</style>""", unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
-# 2. SIDEBAR
+# SIDEBAR
 with st.sidebar:
     st.header("🎯 Your Study Context")
     exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
@@ -21,60 +19,50 @@ with st.sidebar:
         st.rerun()
         
     days_left = (test_date - date.today()).days
-    tension = "High 🚨" if days_left < 7 else ("Medium ⚠️" if days_left < 20 else "Low 😌")
-    st.markdown("---")
-    st.markdown(f"### 📊 Your Status \n- **Tension:** {tension} \n- **Days Left:** {days_left}")
+    if days_left == 0: tension = "TEST DAY! 🚀"
+    else: tension = "High 🚨" if days_left < 7 else ("Medium ⚠️" if days_left < 20 else "Low 😌")
+    st.markdown(f"--- \n### 📊 Your Status \n- **Tension:** {tension} \n- **Days Left:** {days_left}")
 
-# 3. TABS
-tab1, tab2 = st.tabs(["💬 Chat", "📸 Upload/Analyze"])
+# CHAT LOGIC
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
 
-# TAB 1: CHAT
-with tab1:
-    if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
-    
-    for i, message in enumerate(st.session_state.messages):
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            # Button appears only if AI asked a diagnostic question
-            if message["role"] == "assistant" and i > 0 and "?" in message["content"] and "cheat sheet" not in message["content"].lower():
-                if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
-                    st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
-                    st.rerun()
+for i, message in enumerate(st.session_state.messages):
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        
+        # SMART BUTTON LOGIC: 
+        # Only appears if AI asked a question (?) AND we aren't in "chitchat"
+        is_coaching = "?" in message["content"] and any(x in message["content"].lower() for x in ["what", "how", "why", "describe"])
+        if message["role"] == "assistant" and i > 0 and is_coaching:
+            if st.button("⚡ Stuck? Get the cheat sheet", key=f"btn_{i}"):
+                st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
+                st.rerun()
 
-    if prompt := st.chat_input("Ask a question..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        st.rerun()
+if prompt := st.chat_input("Ask a question..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.rerun()
 
-    # AI PROCESSING (CHAT)
-    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-        with st.chat_message("assistant"):
-            with st.spinner('FocusFlow is thinking...'):
-                api_key = st.secrets["GOOGLE_API_KEY"]
-                # Dynamic model fetching
-                list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-                models = requests.get(list_url).json()['models']
-                model_name = next(m['name'] for m in models if 'generateContent' in m['supportedGenerationMethods'])
-                url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
-                
-                user_msg = st.session_state.messages[-1]["content"].lower()
-                # PROMPT LOGIC
-                if any(x in user_msg for x in ["cheat sheet", "just give me", "explain"]):
-                    full_prompt = f"Context: {current_topic}. Provide a concise, high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct."
-                else:
-                    full_prompt = f"Context: {exam_goal}, {current_topic}. User: {user_msg}. Rules: Act as a Socratic coach, ask ONE diagnostic question to check understanding first. Do not dump the answer yet."
-                
-                payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-                response = requests.post(url, json=payload).json()
-                if 'candidates' in response:
-                    answer = response['candidates'][0]['content']['parts'][0]['text']
-                    st.markdown(answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
-                    st.rerun()
-                else:
-                    st.error("Quota reached or AI busy. Refresh in 1 minute!")
-
-# TAB 2: UPLOAD
-with tab2:
-    if uploaded_file := st.file_uploader("Upload a diagram", type=["jpg", "png"]):
-        st.warning("Analysis feature is under maintenance. Please use the Chat tab!")
+# AI PROCESSING
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    with st.chat_message("assistant"):
+        with st.spinner('Thinking...'):
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            
+            user_msg = st.session_state.messages[-1]["content"].lower()
+            
+            # THE "RADICAL TRUTH" PROMPT
+            if any(x in user_msg for x in ["cheat sheet", "give me", "explain", "answer"]):
+                full_prompt = f"Context: {exam_goal}, {current_topic}. Provide a high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct, no fluff."
+            elif any(x in user_msg for x in ["hi", "hello", "12 hours", "study hours"]):
+                full_prompt = f"User: {user_msg}. Respond naturally as a mentor. Challenge inefficient study habits (like 12-hour study days). Do not ask a diagnostic question."
+            else:
+                full_prompt = f"Context: {exam_goal}, {current_topic}. User: {user_msg}. Act as a Socratic coach. Challenge assumptions. Ask ONE diagnostic question."
+            
+            response = requests.post(url, json={"contents": [{"parts": [{"text": full_prompt}]}]}).json()
+            if 'candidates' in response:
+                answer = response['candidates'][0]['content']['parts'][0]['text']
+                st.markdown(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                st.rerun()
