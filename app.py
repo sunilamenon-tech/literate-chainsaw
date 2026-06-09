@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import base64
 from datetime import date
 
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
@@ -29,10 +28,10 @@ for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         
-        # IMPROVED BUTTON LOGIC
-        # Only shows if: 1. It's AI 2. It has a question 3. It's NOT a cheat sheet/summary
-       if message["role"] == "assistant" and i > 0 and "?" in message["content"] and "cheat sheet" not in message["content"].lower() and "formula" not in message["content"].lower() and "here is" not in message["content"].lower():
-            if "?" in content_lower and not any(word in content_lower for word in ["cheat sheet", "here is", "formula", "summar"]):
+        # FIXED BUTTON LOGIC: Only appears if AI is in quiz mode
+        if message["role"] == "assistant" and i > 0:
+            content_lower = message["content"].lower()
+            if "?" in content_lower and not any(x in content_lower for x in ["cheat sheet", "formula", "here is"]):
                 if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
                     st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
                     st.rerun()
@@ -50,14 +49,13 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
                 models_data = requests.get(list_url).json()
                 model_name = next(m['name'] for m in models_data['models'] if 'generateContent' in m['supportedGenerationMethods'])
-                
                 url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
-                user_msg = st.session_state.messages[-1]["content"].lower()
                 
+                user_msg = st.session_state.messages[-1]["content"].lower()
                 if any(x in user_msg for x in ["cheat sheet", "give me", "explain"]):
                     full_prompt = f"Context: {current_topic}. Provide a concise high-yield cheat sheet for: {st.session_state.messages[-2]['content']}. Be direct."
                 else:
-                    full_prompt = f"Context: {current_topic}. User: {user_msg}. Rules: Act as Socratic Coach. Challenge assumptions. Ask ONE diagnostic question."
+                    full_prompt = f"Context: {current_topic}. User: {user_msg}. Rules: Act as a coach, ask ONE diagnostic question first. Do not agree immediately."
                 
                 payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
                 response = requests.post(url, json=payload).json()
