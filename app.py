@@ -43,18 +43,28 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
         with st.spinner('Thinking...'):
             try:
                 api_key = st.secrets["GOOGLE_API_KEY"]
-                # We use the simplest possible URL for the model
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                # 1. Ask Google for the list of available models
+                list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                models_response = requests.get(list_url).json()
                 
-                payload = {"contents": [{"parts": [{"text": st.session_state.messages[-1]["content"]}]}]}
+                # 2. Find the first model that supports generateContent
+                # This ensures we pick a name that actually exists in YOUR project
+                valid_models = [m['name'] for m in models_response['models'] if 'generateContent' in m['supportedGenerationMethods']]
+                model_name = valid_models[0] # Pick the first available one
+                
+                # 3. Call the API with the dynamically found model name
+                url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+                user_msg = st.session_state.messages[-1]["content"]
+                payload = {"contents": [{"parts": [{"text": f"You are a helpful study coach. User asks: {user_msg}"}]}]}
                 
                 response = requests.post(url, json=payload).json()
                 
-                if 'candidates' in response and response['candidates']:
+                if 'candidates' in response:
                     answer = response['candidates'][0]['content']['parts'][0]['text']
                     st.markdown(answer)
                     st.session_state.messages.append({"role": "assistant", "content": answer})
+                    st.rerun()
                 else:
-                    st.error(f"Debug: {response}") # This will tell us EXACTLY what Google says
+                    st.error(f"AI Error: {response}")
             except Exception as e:
                 st.error(f"Error: {e}")
