@@ -31,8 +31,7 @@ for i, message in enumerate(st.session_state.messages):
         
         # IMPROVED BUTTON LOGIC
         # Only shows if: 1. It's AI 2. It has a question 3. It's NOT a cheat sheet/summary
-        if message["role"] == "assistant" and i > 0:
-            content_lower = message["content"].lower()
+       if message["role"] == "assistant" and i > 0 and "?" in message["content"] and "cheat sheet" not in message["content"].lower() and "formula" not in message["content"].lower() and "here is" not in message["content"].lower():
             if "?" in content_lower and not any(word in content_lower for word in ["cheat sheet", "here is", "formula", "summar"]):
                 if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
                     st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
