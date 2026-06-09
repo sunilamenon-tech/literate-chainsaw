@@ -28,10 +28,13 @@ for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         
-        # FIXED BUTTON LOGIC: Only appears if AI is in quiz mode
         if message["role"] == "assistant" and i > 0:
             content_lower = message["content"].lower()
-            if "?" in content_lower and not any(x in content_lower for x in ["cheat sheet", "formula", "here is"]):
+            # Only show the button if it's a hard academic topic
+            # We exclude "study plan", "hours", "goal", "feeling" from triggering the button
+            is_academic = "?" in content_lower and not any(x in content_lower for x in ["plan", "hour", "goal", "feeling", "time", "day"])
+            
+            if is_academic:
                 if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
                     st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
                     st.rerun()
