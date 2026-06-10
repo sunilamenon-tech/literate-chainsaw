@@ -355,20 +355,53 @@ with st.sidebar:
     st.divider()
     
     # ============================================================
-    # ENHANCED DAILY CHALLENGE SECTION
+    # ENHANCED DAILY CHALLENGE — TOPIC-AWARE & HONEST WORDING
     # ============================================================
     st.markdown("### 🎯 Daily Challenge")
     
-    today = date.today()
+     today = date.today()
+    
+   # Extract topics from chat history for personalization
+    def extract_chat_topics():
+        """Extract key topics from recent chat messages."""
+        topics = []
+        all_msgs = []
+        for thread_msgs in st.session_state.threads.values():
+            all_msgs.extend(thread_msgs)
+        
+        # Look for topic indicators in user messages
+        for msg in all_msgs:
+            if msg.get("role") == "user" and not msg.get("hidden"):
+                content = msg.get("content", "").lower()
+                # Extract noun phrases (simple heuristic)
+                if "what is" in content or "explain" in content or "how to" in content:
+                    # Try to extract the topic after the question word
+                    words = content.replace("what is", "").replace("explain", "").replace("how to", "").strip()
+                    if len(words) > 3 and len(words) < 100:
+                        topics.append(words.strip("?").strip())
+        
+        # Also use weak areas as topic hints
+        for weak_topic in st.session_state.weak_areas.keys():
+            # weak_topic format is "Subject: Topic" or just "Topic"
+            if ":" in weak_topic:
+                topics.append(weak_topic.split(":", 1)[1].strip())
+        
+        # Return unique topics, most recent first
+        seen = set()
+        unique_topics = []
+        for t in reversed(topics):  # Most recent first
+            if t not in seen and len(t) > 3:
+                seen.add(t)
+                unique_topics.append(t)
+        
+        return unique_topics[:5]  # Top 5 recent topics
     
     # Check if yesterday's challenge was missed
     if st.session_state.daily_challenge_date:
         yesterday = today - timedelta(days=1)
         last_challenge_date = st.session_state.daily_challenge_date
         
-        # If last challenge was from yesterday and NOT completed → MISSED
         if last_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
-            # Record as missed
             if st.session_state.daily_challenge:
                 st.session_state.challenge_history.append({
                     "date": str(yesterday),
@@ -376,7 +409,6 @@ with st.sidebar:
                     "challenge": st.session_state.daily_challenge,
                     "completed": False
                 })
-            # Reset streak
             st.session_state.challenge_streak = 0
             st.session_state.daily_challenge = None
             st.session_state.daily_challenge_date = None
@@ -400,13 +432,11 @@ with st.sidebar:
             st.session_state.daily_challenge_completed = True
             st.session_state.last_challenge_completed_date = today
             
-            # Update streak
             if st.session_state.last_challenge_completed_date == today - timedelta(days=1):
                 st.session_state.challenge_streak += 1
             else:
                 st.session_state.challenge_streak = 1
             
-            # Record in history
             st.session_state.challenge_history.append({
                 "date": str(today),
                 "subject": st.session_state.current_topic,
@@ -422,28 +452,78 @@ with st.sidebar:
         st.markdown(f"<div class='challenge-complete'><b>✅ Completed!</b><br>{st.session_state.daily_challenge}<br><br>🎉 Great job! Come back tomorrow for a new challenge.</div>", unsafe_allow_html=True)
         
     else:
-        # No challenge generated yet for today
+        # Generate new challenge
         if st.button("🎯 Generate Today's Challenge", use_container_width=True):
-            # Generate challenge based on weak areas if available
-            if st.session_state.weak_areas:
-                weakest_topic = sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[0][0]
-                challenge_types = [
-                    f"Revise and solve 3 questions from {weakest_topic}",
-                    f"Create a cheat sheet for {weakest_topic}",
-                    f"Explain {weakest_topic} to yourself out loud"
-                ]
-                import random
-                st.session_state.daily_challenge = random.choice(challenge_types)
-            else:
-               challenge_types = [
-    f"Solve 5 MCQs from {current_topic}",
-    f"Write a summary of one chapter from {current_topic}",
-    f"Create 5 flashcards for {current_topic}",
-    f"Solve 2 previous year questions from {current_topic}",
-    f"Teach one concept from {current_topic} to a friend (or yourself)"]
-    import random
-    st.session_state.daily_challenge = random.choice(challenge_types)
+            recent_topics = extract_chat_topics()
+            subject = st.session_state.current_topic
             
+            # TOPIC-AWARE CHALLENGE GENERATION
+            if recent_topics:
+                # Student has chat history — personalize based on what they studied
+                topic = recent_topics[0]  # Most recent topic
+                
+                challenge_templates = [
+                    f"Revise and explain: {topic}",
+                    f"Create 3 flashcards for: {topic}",
+                    f"Write a 5-sentence summary of: {topic}",
+                    f"Teach {topic} to an imaginary friend (out loud or in writing)",
+                    f"Draw a mind map connecting {topic} to 3 related concepts",
+                    f"Find 1 real-life application of {topic}",
+                    f"List 5 key points about {topic} without looking at notes",
+                ]
+            else:
+                # No chat history yet — generic but honest challenges
+                challenge_templates = {
+                    "Physics": [
+                        "Solve 1 numerical problem on Newton's Laws",
+                        "Draw a free-body diagram for a block on an inclined plane",
+                        "Write the formula and one application of Ohm's Law",
+                        "Explain the difference between speed and velocity in your own words",
+                    ],
+                    "Chemistry": [
+                        "Balance 1 chemical equation and explain the steps",
+                        "Draw the structure of a water molecule and label bonds",
+                        "Write 3 differences between acids and bases",
+                        "Explain the periodic trend for atomic radius",
+                    ],
+                    "Maths": [
+                        "Solve 1 quadratic equation using the formula",
+                        "Prove the Pythagorean theorem with a diagram",
+                        "Find the HCF of two numbers using prime factorization",
+                        "Draw the graph of y = x² and label key points",
+                    ],
+                    "Biology": [
+                        "Draw and label a plant cell",
+                        "Explain photosynthesis in 4 steps",
+                        "List 3 differences between mitosis and meiosis",
+                        "Trace the path of food from mouth to stomach",
+                    ],
+                    "English": [
+                        "Write 5 synonyms for 'beautiful'",
+                        "Identify the figure of speech: 'The sun smiled at us'",
+                        "Summarize your favorite chapter in 3 sentences",
+                        "Write 1 paragraph using 3 idioms correctly",
+                    ],
+                    "History": [
+                        "Create a timeline of the Mughal Empire with 4 events",
+                        "Compare the administrative systems of Ashoka and Akbar",
+                        "Write 3 causes and 3 effects of World War I",
+                        "Explain the significance of the Quit India Movement",
+                    ],
+                    "Other": [
+                        "Revise 1 concept from your weakest topic",
+                        "Create 5 flashcards for today's lesson",
+                        "Explain today's topic to yourself without notes",
+                        "Solve 2 practice questions from the previous chapter",
+                    ]
+                }
+                
+                templates = challenge_templates.get(subject, challenge_templates["Other"])
+                import random
+                challenge_templates = templates  # Use the subject-specific list
+            
+            import random
+            st.session_state.daily_challenge = random.choice(challenge_templates)
             st.session_state.daily_challenge_date = today
             st.session_state.daily_challenge_completed = False
             st.rerun()
