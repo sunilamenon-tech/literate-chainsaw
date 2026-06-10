@@ -89,6 +89,36 @@ st.markdown("""
         margin: 8px 0;
         border-left: 3px solid #FF6600;
     }
+    .challenge-box {
+        background: linear-gradient(135deg, #FFF8E1, #FFECB3);
+        border-left: 4px solid #FFC107;
+        padding: 16px;
+        border-radius: 12px;
+        margin: 8px 0;
+    }
+    .challenge-complete {
+        background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
+        border-left: 4px solid #4CAF50;
+        padding: 16px;
+        border-radius: 12px;
+        margin: 8px 0;
+    }
+    .challenge-missed {
+        background: linear-gradient(135deg, #FFEBEE, #FFCDD2);
+        border-left: 4px solid #C62828;
+        padding: 16px;
+        border-radius: 12px;
+        margin: 8px 0;
+    }
+    .streak-flame {
+        font-size: 24px;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -97,22 +127,20 @@ st.title("⚡ FocusFlow")
 # ============================================================
 # DETECT WHICH API KEY IS AVAILABLE
 # ============================================================
-api_config = None  # Will store: {provider, key, model, url}
+api_config = None
 
-# Try Groq first (most reliable free tier)
 try:
     key = st.secrets["GROQ_API_KEY"]
     if key and len(key) > 10:
         api_config = {
             "provider": "groq",
             "key": key,
-            "model": "llama-3.1-8b-instant",  # Fast, good quality, generous free tier
+            "model": "llama-3.1-8b-instant",
             "url": "https://api.groq.com/openai/v1/chat/completions"
         }
 except:
     pass
 
-# Try OpenRouter second
 if not api_config:
     try:
         key = st.secrets["OPENROUTER_API_KEY"]
@@ -126,7 +154,6 @@ if not api_config:
     except:
         pass
 
-# Try Google last
 if not api_config:
     try:
         key = st.secrets["GOOGLE_API_KEY"]
@@ -135,14 +162,11 @@ if not api_config:
                 "provider": "google",
                 "key": key,
                 "model": "gemini-1.5-pro",
-                "url": None  # Google uses different URL format
+                "url": None
             }
     except:
         pass
 
-# ============================================================
-# SHOW SETUP SCREEN IF NO API KEY
-# ============================================================
 if not api_config:
     st.markdown("""
     <div class='setup-box'>
@@ -151,38 +175,18 @@ if not api_config:
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("### Option 1: Groq ⭐ (Recommended — Fastest, Most Reliable)")
+    st.markdown("### Option 1: Groq ⭐ (Recommended)")
     st.markdown("""
     <div class='setup-step'>
         <b>Step 1:</b> Go to <a href='https://console.groq.com/keys' target='_blank'>console.groq.com/keys</a><br>
-        <b>Step 2:</b> Sign up with Google/GitHub (30 seconds)<br>
-        <b>Step 3:</b> Click "Create API Key" → Copy it (starts with <code>gsk_</code>)<br>
-        <b>Step 4:</b> In Streamlit Cloud Secrets, add:<br>
-        <code>GROQ_API_KEY = "gsk_your-key-here"</code>
+        <b>Step 2:</b> Sign up with Google/GitHub<br>
+        <b>Step 3:</b> Create API Key (starts with <code>gsk_</code>)<br>
+        <b>Step 4:</b> Add to Streamlit Secrets:<br>
+        <code>GROQ_API_KEY = "gsk_your-key"</code>
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("### Option 2: OpenRouter")
-    st.markdown("""
-    <div class='setup-step'>
-        <b>Step 1:</b> Go to <a href='https://openrouter.ai/keys' target='_blank'>openrouter.ai/keys</a><br>
-        <b>Step 2:</b> Sign up → Create API Key<br>
-        <b>Step 3:</b> In Streamlit Cloud Secrets, add:<br>
-        <code>OPENROUTER_API_KEY = "sk-or-v1-your-key"</code>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### Option 3: Google AI")
-    st.markdown("""
-    <div class='setup-step'>
-        <b>Step 1:</b> Go to <a href='https://aistudio.google.com/app/apikey' target='_blank'>aistudio.google.com/app/apikey</a><br>
-        <b>Step 2:</b> Create API Key (starts with <code>AIzaSy</code>)<br>
-        <b>Step 3:</b> In Streamlit Cloud Secrets, add:<br>
-        <code>GOOGLE_API_KEY = "AIzaSy-your-key"</code>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.error("⛔ No valid API key found. Add one key above and refresh this page.")
+    st.error("⛔ No valid API key found.")
     st.stop()
 
 # ============================================================
@@ -202,8 +206,13 @@ defaults = {
     "total_study_minutes": 0,
     "pomodoro_active": False,
     "pomodoro_end": None,
+    # ENHANCED DAILY CHALLENGE STATE
     "daily_challenge": None,
-    "last_challenge_date": None,
+    "daily_challenge_date": None,
+    "daily_challenge_completed": False,
+    "challenge_streak": 0,
+    "last_challenge_completed_date": None,
+    "challenge_history": [],  # List of {date, subject, challenge_text, completed}
     "pending_ai_request": None,
 }
 
@@ -272,10 +281,8 @@ with st.sidebar:
     
     st.divider()
     
-    # AI Status
     st.markdown("### 🔌 AI Status")
-    provider_name = api_config["provider"].upper()
-    st.success(f"✅ {provider_name}")
+    st.success(f"✅ {api_config['provider'].upper()}")
     st.caption(f"Model: {api_config['model'].split('/')[-1]}")
     
     st.divider()
@@ -347,18 +354,109 @@ with st.sidebar:
     
     st.divider()
     
-    # Daily Challenge
+    # ============================================================
+    # ENHANCED DAILY CHALLENGE SECTION
+    # ============================================================
     st.markdown("### 🎯 Daily Challenge")
-    if st.session_state.last_challenge_date != today:
-        st.session_state.daily_challenge = None
     
-    if st.session_state.daily_challenge:
-        st.info(st.session_state.daily_challenge)
-    else:
-        if st.button("Generate Challenge", use_container_width=True):
-            st.session_state.daily_challenge = f"Solve 5 questions from {st.session_state.current_topic} ({st.session_state.exam_goal})"
-            st.session_state.last_challenge_date = today
+    today = date.today()
+    
+    # Check if yesterday's challenge was missed
+    if st.session_state.daily_challenge_date:
+        yesterday = today - timedelta(days=1)
+        last_challenge_date = st.session_state.daily_challenge_date
+        
+        # If last challenge was from yesterday and NOT completed → MISSED
+        if last_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
+            # Record as missed
+            if st.session_state.daily_challenge:
+                st.session_state.challenge_history.append({
+                    "date": str(yesterday),
+                    "subject": st.session_state.current_topic,
+                    "challenge": st.session_state.daily_challenge,
+                    "completed": False
+                })
+            # Reset streak
+            st.session_state.challenge_streak = 0
+            st.session_state.daily_challenge = None
+            st.session_state.daily_challenge_date = None
+            st.session_state.daily_challenge_completed = False
+    
+    # Generate new challenge for today if needed
+    if st.session_state.daily_challenge_date != today:
+        st.session_state.daily_challenge = None
+        st.session_state.daily_challenge_completed = False
+    
+    # CHALLENGE STREAK BADGE
+    if st.session_state.challenge_streak > 0:
+        flame = "🔥" * min(st.session_state.challenge_streak, 5)
+        st.markdown(f"<div class='streak-badge'><span class='streak-flame'>{flame}</span> {st.session_state.challenge_streak} day challenge streak!</div>", unsafe_allow_html=True)
+    
+    # DISPLAY CHALLENGE
+    if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
+        st.markdown(f"<div class='challenge-box'><b>📋 Today's Challenge:</b><br>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
+        
+        if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
+            st.session_state.daily_challenge_completed = True
+            st.session_state.last_challenge_completed_date = today
+            
+            # Update streak
+            if st.session_state.last_challenge_completed_date == today - timedelta(days=1):
+                st.session_state.challenge_streak += 1
+            else:
+                st.session_state.challenge_streak = 1
+            
+            # Record in history
+            st.session_state.challenge_history.append({
+                "date": str(today),
+                "subject": st.session_state.current_topic,
+                "challenge": st.session_state.daily_challenge,
+                "completed": True
+            })
+            
+            st.balloons()
+            st.toast("🎉 Challenge completed! Streak: " + str(st.session_state.challenge_streak))
             st.rerun()
+    
+    elif st.session_state.daily_challenge and st.session_state.daily_challenge_completed:
+        st.markdown(f"<div class='challenge-complete'><b>✅ Completed!</b><br>{st.session_state.daily_challenge}<br><br>🎉 Great job! Come back tomorrow for a new challenge.</div>", unsafe_allow_html=True)
+        
+    else:
+        # No challenge generated yet for today
+        if st.button("🎯 Generate Today's Challenge", use_container_width=True):
+            # Generate challenge based on weak areas if available
+            if st.session_state.weak_areas:
+                weakest_topic = sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[0][0]
+                challenge_types = [
+                    f"Revise and solve 3 questions from {weakest_topic}",
+                    f"Create a cheat sheet for {weakest_topic}",
+                    f"Explain {weakest_topic} to yourself out loud"
+                ]
+                import random
+                st.session_state.daily_challenge = random.choice(challenge_types)
+            else:
+                challenge_types = [
+                    f"Solve 5 MCQs from {st.session_state.current_topic}",
+                    f"Write a summary of one chapter from {st.session_state.current_topic}",
+                    f"Create 5 flashcards for {st.session_state.current_topic}",
+                    f"Solve 2 previous year questions from {st.session_state.current_topic}",
+                    f"Teach one concept from {st.session_state.current_topic} to a friend (or yourself)"
+                ]
+                import random
+                st.session_state.daily_challenge = random.choice(challenge_types)
+            
+            st.session_state.daily_challenge_date = today
+            st.session_state.daily_challenge_completed = False
+            st.rerun()
+    
+    # Weekly summary
+    if st.session_state.challenge_history:
+        st.divider()
+        st.markdown("### 📊 This Week")
+        this_week = [c for c in st.session_state.challenge_history 
+                     if datetime.strptime(c["date"], "%Y-%m-%d").date() >= today - timedelta(days=7)]
+        completed_this_week = sum(1 for c in this_week if c["completed"])
+        st.markdown(f"✅ **{completed_this_week}/7** challenges completed this week")
     
     st.divider()
     
@@ -402,18 +500,16 @@ def detect_intent(prompt: str) -> str:
     return "socratic"
 
 # ============================================================
-# AI RESPONSE FUNCTION — UNIVERSAL (Works with Groq, OpenRouter, Google)
+# AI RESPONSE FUNCTION
 # ============================================================
 
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=None):
-    """Call AI API — auto-detects provider and handles all formats."""
     try:
         provider = api_config["provider"]
         model = api_config["model"]
         days_left = (st.session_state.test_date - date.today()).days
         crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
         
-        # Build system prompt
         if msg_type == "casual":
             system_prompt = f"""You are FocusFlow, a warm study buddy. The student said: "{prompt}"
 Respond conversationally and warmly. If it's a greeting, greet back and briefly mention you're ready to help with {st.session_state.current_topic}.
@@ -441,7 +537,7 @@ Format with markdown:
 (One solved example)
 Context: {st.session_state.exam_goal}, Subject: {st.session_state.current_topic}"""
             
-        else:  # socratic
+        else:
             system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
 The student asked: "{prompt}"
 
@@ -460,7 +556,6 @@ A) Mitochondria  B) Chloroplast  C) Nucleus  D) Ribosome
 Take your time! If you're stuck, click the ⚡ button below 👇"
 """
         
-        # ==================== GROQ ====================
         if provider == "groq":
             messages = [{"role": "system", "content": system_prompt}]
             messages.append({"role": "user", "content": prompt})
@@ -485,7 +580,6 @@ Take your time! If you're stuck, click the ⚡ button below 👇"
                 error = response.get('error', {}).get('message', 'Unknown error')
                 return f"⚠️ Groq Error: {error}", "error"
         
-        # ==================== OPENROUTER ====================
         elif provider == "openrouter":
             messages = [{"role": "system", "content": system_prompt}]
             messages.append({"role": "user", "content": prompt})
@@ -512,7 +606,6 @@ Take your time! If you're stuck, click the ⚡ button below 👇"
                 error = response.get('error', {}).get('message', 'Unknown error')
                 return f"⚠️ OpenRouter Error: {error}", "error"
         
-        # ==================== GOOGLE ====================
         else:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
             
@@ -540,14 +633,9 @@ Take your time! If you're stuck, click the ⚡ button below 👇"
         return f"❌ Error: {str(e)}", "error"
 
 # ============================================================
-# DISPLAY CHAT
+# SUBJECT-SPECIFIC WELCOME CONTENT
 # ============================================================
 
-current_messages = st.session_state.threads[st.session_state.current_thread]
-
-days_left = (st.session_state.test_date - date.today()).days
-
-# Subject-specific content for welcome message
 SUBJECT_CONTENT = {
     "Physics": {
         "example_concept": "Explain Newton's Laws of Motion",
@@ -578,6 +666,14 @@ SUBJECT_CONTENT = {
         "example_question": "What is the Pythagorean Theorem?"
     }
 }
+
+# ============================================================
+# DISPLAY CHAT
+# ============================================================
+
+current_messages = st.session_state.threads[st.session_state.current_thread]
+
+days_left = (st.session_state.test_date - date.today()).days
 
 # Welcome message if thread is empty
 if not current_messages:
