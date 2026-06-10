@@ -435,13 +435,13 @@ with st.sidebar:
                 import random
                 st.session_state.daily_challenge = random.choice(challenge_types)
             else:
-                challenge_types = [
-                    f"Solve 5 MCQs from {st.session_state.current_topic}",
-                    f"Write a summary of one chapter from {st.session_state.current_topic}",
-                    f"Create 5 flashcards for {st.session_state.current_topic}",
-                    f"Solve 2 previous year questions from {st.session_state.current_topic}",
-                    f"Teach one concept from {st.session_state.current_topic} to a friend (or yourself)"
-                ]
+               challenge_types = [
+    f"Solve 5 MCQs from {current_topic}",
+    f"Write a summary of one chapter from {current_topic}",
+    f"Create 5 flashcards for {current_topic}",
+    f"Solve 2 previous year questions from {current_topic}",
+    f"Teach one concept from {current_topic} to a friend (or yourself)"
+]
                 import random
                 st.session_state.daily_challenge = random.choice(challenge_types)
             
