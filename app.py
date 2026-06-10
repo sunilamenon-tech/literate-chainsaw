@@ -89,59 +89,100 @@ st.markdown("""
         margin: 8px 0;
         border-left: 3px solid #FF6600;
     }
-    .model-selector {
-        background: white;
-        padding: 10px;
-        border-radius: 8px;
-        border: 1px solid #ddd;
-        margin: 8px 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
 # ============================================================
-# CHECK API KEY
+# DETECT WHICH API KEY IS AVAILABLE
 # ============================================================
-api_key = None
-key_source = None
+api_config = None  # Will store: {provider, key, model, url}
 
+# Try Groq first (most reliable free tier)
 try:
-    api_key = st.secrets["OPENROUTER_API_KEY"]
-    if api_key and len(api_key) > 10:
-        key_source = "openrouter"
+    key = st.secrets["GROQ_API_KEY"]
+    if key and len(key) > 10:
+        api_config = {
+            "provider": "groq",
+            "key": key,
+            "model": "llama-3.1-8b-instant",  # Fast, good quality, generous free tier
+            "url": "https://api.groq.com/openai/v1/chat/completions"
+        }
 except:
     pass
 
-if not key_source:
+# Try OpenRouter second
+if not api_config:
     try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-        if api_key and len(api_key) > 10:
-            key_source = "google"
+        key = st.secrets["OPENROUTER_API_KEY"]
+        if key and len(key) > 10:
+            api_config = {
+                "provider": "openrouter",
+                "key": key,
+                "model": "meta-llama/llama-3.2-3b-instruct:free",
+                "url": "https://openrouter.ai/api/v1/chat/completions"
+            }
     except:
         pass
 
-if not key_source:
+# Try Google last
+if not api_config:
+    try:
+        key = st.secrets["GOOGLE_API_KEY"]
+        if key and len(key) > 10:
+            api_config = {
+                "provider": "google",
+                "key": key,
+                "model": "gemini-1.5-pro",
+                "url": None  # Google uses different URL format
+            }
+    except:
+        pass
+
+# ============================================================
+# SHOW SETUP SCREEN IF NO API KEY
+# ============================================================
+if not api_config:
     st.markdown("""
     <div class='setup-box'>
         <h2>🔧 Setup Required</h2>
-        <p>You need an API key to use FocusFlow.</p>
+        <p>Add any ONE of these API keys to your Streamlit secrets:</p>
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("### Option 1: OpenRouter (Recommended — Free, Works Everywhere)")
+    st.markdown("### Option 1: Groq ⭐ (Recommended — Fastest, Most Reliable)")
+    st.markdown("""
+    <div class='setup-step'>
+        <b>Step 1:</b> Go to <a href='https://console.groq.com/keys' target='_blank'>console.groq.com/keys</a><br>
+        <b>Step 2:</b> Sign up with Google/GitHub (30 seconds)<br>
+        <b>Step 3:</b> Click "Create API Key" → Copy it (starts with <code>gsk_</code>)<br>
+        <b>Step 4:</b> In Streamlit Cloud Secrets, add:<br>
+        <code>GROQ_API_KEY = "gsk_your-key-here"</code>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### Option 2: OpenRouter")
     st.markdown("""
     <div class='setup-step'>
         <b>Step 1:</b> Go to <a href='https://openrouter.ai/keys' target='_blank'>openrouter.ai/keys</a><br>
-        <b>Step 2:</b> Sign in with Google (30 seconds)<br>
-        <b>Step 3:</b> Create API Key → Copy it (starts with <code>sk-or-v1-</code>)<br>
-        <b>Step 4:</b> In Streamlit Cloud Secrets, add:<br>
+        <b>Step 2:</b> Sign up → Create API Key<br>
+        <b>Step 3:</b> In Streamlit Cloud Secrets, add:<br>
         <code>OPENROUTER_API_KEY = "sk-or-v1-your-key"</code>
     </div>
     """, unsafe_allow_html=True)
     
-    st.error("⛔ Add OPENROUTER_API_KEY to your Streamlit secrets and refresh.")
+    st.markdown("### Option 3: Google AI")
+    st.markdown("""
+    <div class='setup-step'>
+        <b>Step 1:</b> Go to <a href='https://aistudio.google.com/app/apikey' target='_blank'>aistudio.google.com/app/apikey</a><br>
+        <b>Step 2:</b> Create API Key (starts with <code>AIzaSy</code>)<br>
+        <b>Step 3:</b> In Streamlit Cloud Secrets, add:<br>
+        <code>GOOGLE_API_KEY = "AIzaSy-your-key"</code>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.error("⛔ No valid API key found. Add one key above and refresh this page.")
     st.stop()
 
 # ============================================================
@@ -164,7 +205,6 @@ defaults = {
     "daily_challenge": None,
     "last_challenge_date": None,
     "pending_ai_request": None,
-    "openrouter_model": "google/gemini-1.5-flash:free",  # Default to most reliable free model
 }
 
 for key, value in defaults.items():
@@ -232,29 +272,11 @@ with st.sidebar:
     
     st.divider()
     
-    # AI Status & Model Selector
+    # AI Status
     st.markdown("### 🔌 AI Status")
-    st.success("✅ Connected")
-    
-    # MODEL SELECTOR — KEY FIX: Let user switch if one model fails
-    st.markdown("### 🤖 Model")
-    st.caption("If you get 'No endpoints', switch model:")
-    
-    model_options = [
-        "google/gemini-1.5-flash:free",
-        "meta-llama/llama-3.2-3b-instruct:free", 
-        "mistralai/mistral-7b-instruct:free",
-        "google/gemini-2.0-flash-exp:free",
-    ]
-    
-    selected_model = st.selectbox(
-        "Choose Model",
-        model_options,
-        index=model_options.index(st.session_state.openrouter_model) if st.session_state.openrouter_model in model_options else 0
-    )
-    st.session_state.openrouter_model = selected_model
-    
-    st.caption(f"Current: `{selected_model.split('/')[-1]}`")
+    provider_name = api_config["provider"].upper()
+    st.success(f"✅ {provider_name}")
+    st.caption(f"Model: {api_config['model'].split('/')[-1]}")
     
     st.divider()
     
@@ -380,15 +402,14 @@ def detect_intent(prompt: str) -> str:
     return "socratic"
 
 # ============================================================
-# AI RESPONSE FUNCTION
+# AI RESPONSE FUNCTION — UNIVERSAL (Works with Groq, OpenRouter, Google)
 # ============================================================
 
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=None):
-    """Call OpenRouter API and return response text."""
+    """Call AI API — auto-detects provider and handles all formats."""
     try:
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        model = st.session_state.openrouter_model
-        
+        provider = api_config["provider"]
+        model = api_config["model"]
         days_left = (st.session_state.test_date - date.today()).days
         crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
         
@@ -439,44 +460,79 @@ A) Mitochondria  B) Chloroplast  C) Nucleus  D) Ribosome
 Take your time! If you're stuck, click the ⚡ button below 👇"
 """
         
-        messages = [{"role": "system", "content": system_prompt}]
-        
-        if uploaded_image:
-            image_bytes = uploaded_image.getvalue()
-            image_b64 = base64.b64encode(image_bytes).decode()
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:{uploaded_image.type};base64,{image_b64}"}}
-                ]
-            })
-        else:
+        # ==================== GROQ ====================
+        if provider == "groq":
+            messages = [{"role": "system", "content": system_prompt}]
             messages.append({"role": "user", "content": prompt})
+            
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {api_config['key']}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
+            
+            if 'choices' in response and response['choices']:
+                return response['choices'][0]['message']['content'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown error')
+                return f"⚠️ Groq Error: {error}", "error"
         
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 1000
-        }
+        # ==================== OPENROUTER ====================
+        elif provider == "openrouter":
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.append({"role": "user", "content": prompt})
+            
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {api_config['key']}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://focusflow.app",
+                "X-Title": "FocusFlow"
+            }
+            
+            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
+            
+            if 'choices' in response and response['choices']:
+                return response['choices'][0]['message']['content'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown error')
+                return f"⚠️ OpenRouter Error: {error}", "error"
         
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://focusflow.app",
-            "X-Title": "FocusFlow"
-        }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30).json()
-        
-        if 'choices' in response and response['choices']:
-            return response['choices'][0]['message']['content'], msg_type
+        # ==================== GOOGLE ====================
         else:
-            error = response.get('error', {}).get('message', 'Unknown error')
-            if "No endpoints" in error or "endpoints" in error.lower():
-                return f"⚠️ Model temporarily unavailable: `{model.split('/')[-1]}`\n\n💡 **Fix:** Go to the sidebar → 🤖 Model → Select a different model (try `llama-3.2-3b` or `mistral-7b`)", "error"
-            return f"⚠️ API Error: {error}", "error"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
+            
+            content_parts = [{"text": system_prompt + "\n\nUser: " + prompt}]
+            
+            payload = {
+                "contents": [{"parts": content_parts}],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 1000
+                }
+            }
+            
+            response = requests.post(url, json=payload, timeout=30).json()
+            
+            if 'candidates' in response and response['candidates']:
+                return response['candidates'][0]['content']['parts'][0]['text'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown API error')
+                return f"⚠️ Google Error: {error}", "error"
             
     except requests.exceptions.RequestException as e:
         return f"🌐 Connection error: {str(e)}", "error"
