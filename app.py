@@ -330,23 +330,82 @@ with st.sidebar:
     
     st.divider()
     
-    # Pomodoro Timer
-    st.markdown("### ⏱️ Focus Timer")
-    pomo_cols = st.columns(2)
-    with pomo_cols[0]:
-        if st.button("▶️ 25m", use_container_width=True):
-            st.session_state.pomodoro_active = True
-            st.session_state.pomodoro_end = datetime.now() + timedelta(minutes=25)
-    with pomo_cols[1]:
-        if st.button("⏹️ Stop", use_container_width=True):
-            st.session_state.pomodoro_active = False
-            st.session_state.pomodoro_end = None
+    # ============================================================
+# POMODORO TIMER — FIXED WITH JAVASCRIPT
+# ============================================================
+
+st.markdown("### ⏱️ Focus Timer")
+
+# Start / Stop buttons
+pomo_cols = st.columns(2)
+with pomo_cols[0]:
+    if st.button("▶️ 25m", use_container_width=True):
+        st.session_state.pomodoro_active = True
+        st.session_state.pomodoro_end = datetime.now() + timedelta(minutes=25)
+        st.rerun()
+
+with pomo_cols[1]:
+    if st.button("⏹️ Stop", use_container_width=True):
+        st.session_state.pomodoro_active = False
+        st.session_state.pomodoro_end = None
+        st.rerun()
+
+# Timer display — JavaScript countdown
+if st.session_state.pomodoro_active and st.session_state.pomodoro_end:
     
-    if st.session_state.pomodoro_active and st.session_state.pomodoro_end:
-        remaining = st.session_state.pomodoro_end - datetime.now()
-        if remaining.total_seconds() > 0:
-            mins, secs = divmod(int(remaining.total_seconds()), 60)
-            st.markdown(f"<h3 style='text-align: center; color: #FF6600;'>{mins:02d}:{secs:02d}</h3>", unsafe_allow_html=True)
+    # Calculate remaining seconds server-side for initial display
+    remaining = st.session_state.pomodoro_end - datetime.now()
+    total_seconds = int(remaining.total_seconds())
+    
+    if total_seconds <= 0:
+        # Timer completed!
+        st.session_state.pomodoro_active = False
+        st.session_state.total_study_minutes += 25
+        st.balloons()
+        st.success("🎉 25 min done! Take a 5 min break.")
+        st.session_state.pomodoro_end = None
+        st.rerun()
+    else:
+        # Live JavaScript countdown
+        mins, secs = divmod(total_seconds, 60)
+        
+        st.markdown(f"""
+        <div style="text-align: center; margin: 12px 0;">
+            <div id="pomodoro-timer" style="
+                font-size: 32px; 
+                font-weight: bold; 
+                color: #FF6600;
+                font-family: monospace;
+            ">{mins:02d}:{secs:02d}</div>
+        </div>
+        
+        <script>
+            (function() {{
+                let totalSeconds = {total_seconds};
+                const timerElement = document.getElementById('pomodoro-timer');
+                
+                const countdown = setInterval(function() {{
+                    totalSeconds--;
+                    
+                    if (totalSeconds <= 0) {{
+                        clearInterval(countdown);
+                        timerElement.innerHTML = "00:00 ✅";
+                        timerElement.style.color = "#4CAF50";
+                        // Force refresh when done to trigger celebration
+                        setTimeout(function() {{
+                            window.parent.postMessage({{type: 'streamlit:run'}}, '*');
+                        }}, 1000);
+                    }} else {{
+                        const m = Math.floor(totalSeconds / 60);
+                        const s = totalSeconds % 60;
+                        timerElement.innerHTML = 
+                            (m < 10 ? '0' : '') + m + ':' + 
+                            (s < 10 ? '0' : '') + s;
+                    }}
+                }}, 1000);
+            }})();
+        </script>
+        """, unsafe_allow_html=True)
         else:
             st.session_state.pomodoro_active = False
             st.session_state.total_study_minutes += 25
