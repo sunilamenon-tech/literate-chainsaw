@@ -33,17 +33,25 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# CHAT LOGIC (Replace your existing Chat Logic block at the bottom of app.py)
 if prompt := st.chat_input("Ask a question..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.chat_message("user").markdown(prompt)
-    
+    st.rerun()
+
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
-        # SIMULATED INTELLIGENCE
-        if any(x in prompt.lower() for x in ["cheat sheet", "give me", "explain"]):
-            answer = f"**{current_topic} Cheat Sheet:** \n1. Core Principle: Focus on fundamental laws. \n2. Key Formula: Review your standard textbook equations. \n3. Pro-Tip: Active recall is 2x more effective than re-reading."
-        else:
-            answer = f"That's a deep dive into {current_topic}! To help me understand where you're at, what's the most confusing part about '{prompt}' for you right now?"
-        
-        st.markdown(answer)
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+        with st.spinner('Thinking...'):
+            user_msg = st.session_state.messages[-1]["content"].lower()
+            
+            # THE LOGIC FLOW
+            if any(x in user_msg for x in ["hi", "hello", "hey"]):
+                answer = "Hey there! 👋 I'm FocusFlow, your study coach. I'm here to help you crush your goals. What are we working on today?"
+            elif any(x in user_msg for x in ["cheat sheet", "give me", "explain"]):
+                answer = f"**{current_topic} Summary:** \n1. Focus on core concepts. \n2. Review your key formulas. \n3. Practice active recall. Keep pushing!"
+            else:
+                answer = f"That's an interesting point about {user_msg}! To help me guide you better, what specific part of this topic is currently blocking your progress?"
+            
+            st.markdown(answer)
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+            st.rerun()
         st.rerun()
