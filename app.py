@@ -75,6 +75,11 @@ st.markdown("""
         border-radius: 8px;
         color: #C62828;
     }
+    .model-info {
+        font-size: 11px;
+        color: #666;
+        margin-top: 4px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,6 +105,7 @@ defaults = {
     "daily_challenge": None,
     "last_challenge_date": None,
     "pending_ai_request": None,
+    "gemini_model": "gemini-1.5-pro",  # Default to most reliable
 }
 
 for key, value in defaults.items():
@@ -173,6 +179,19 @@ with st.sidebar:
         st.session_state.current_thread = current_topic
         st.toast(f"Switched to {current_topic}!")
         st.rerun()
+    
+    st.divider()
+    
+    # AI MODEL SELECTOR — KEY FIX FOR THE ERROR
+    st.markdown("### 🤖 AI Model")
+    model_choice = st.selectbox(
+        "Choose Model (if one fails, try another)",
+        ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro", "gemini-1.5-flash-latest"],
+        index=["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro", "gemini-1.5-flash-latest"].index(st.session_state.gemini_model)
+    )
+    st.session_state.gemini_model = model_choice
+    st.markdown(f"<div class='model-info'>Using: {model_choice}</div>", unsafe_allow_html=True)
+    st.caption("💡 If you see 'model not found', switch to **gemini-pro** — it works everywhere.")
     
     st.divider()
     
@@ -305,8 +324,9 @@ def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=N
     """Call Gemini API and return response text."""
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-        # FIXED: Use gemini-1.5-flash-latest (the correct model name)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+        # Uses the model selected in sidebar
+        model = st.session_state.gemini_model
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         
         days_left = (st.session_state.test_date - date.today()).days
         crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
@@ -383,7 +403,7 @@ Take your time! If you're stuck, click the ⚡ button below 👇"
             return response['candidates'][0]['content']['parts'][0]['text'], msg_type
         else:
             error = response.get('error', {}).get('message', 'Unknown API error')
-            return f"⚠️ AI Error: {error}", "error"
+            return f"⚠️ AI Error: {error}\n\n💡 **Try switching the model in the sidebar** (🤖 AI Model section) to **gemini-pro** — it works with all API keys.", "error"
             
     except requests.exceptions.RequestException as e:
         return f"🌐 Connection error: {str(e)}", "error"
@@ -396,7 +416,7 @@ Take your time! If you're stuck, click the ⚡ button below 👇"
 
 current_messages = st.session_state.threads[st.session_state.current_thread]
 
-# Recalculate days_left for welcome message (scope fix)
+# Recalculate days_left for welcome message
 days_left = (st.session_state.test_date - date.today()).days
 
 # Welcome message if thread is empty
