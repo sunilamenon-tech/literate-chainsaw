@@ -547,15 +547,36 @@ current_messages = st.session_state.threads[st.session_state.current_thread]
 
 days_left = (st.session_state.test_date - date.today()).days
 
-# Subject-specific example questions
-SUBJECT_EXAMPLES = {
-    "Physics": "What is Newton's First Law?",
-    "Chemistry": "How do I balance chemical equations?",
-    "Maths": "How do I solve quadratic equations?",
-    "Biology": "What is photosynthesis?",
-    "English": "Explain the theme of 'The Road Not Taken'",
-    "History": "What were the main causes of World War I?",
-    "Other": "What is the Pythagorean Theorem?"
+# Subject-specific content for welcome message
+SUBJECT_CONTENT = {
+    "Physics": {
+        "example_concept": "Explain Newton's Laws of Motion",
+        "example_question": "What is Newton's First Law?"
+    },
+    "Chemistry": {
+        "example_concept": "Explain balancing chemical equations",
+        "example_question": "How do I balance chemical equations?"
+    },
+    "Maths": {
+        "example_concept": "Explain quadratic equations",
+        "example_question": "How do I solve quadratic equations?"
+    },
+    "Biology": {
+        "example_concept": "Explain Photosynthesis",
+        "example_question": "What is photosynthesis?"
+    },
+    "English": {
+        "example_concept": "Explain the theme of 'The Road Not Taken'",
+        "example_question": "What is the theme of 'The Road Not Taken'?"
+    },
+    "History": {
+        "example_concept": "Explain the causes of World War I",
+        "example_question": "What were the main causes of World War I?"
+    },
+    "Other": {
+        "example_concept": "Explain the Pythagorean Theorem",
+        "example_question": "What is the Pythagorean Theorem?"
+    }
 }
 
 # Welcome message if thread is empty
@@ -565,19 +586,19 @@ if not current_messages:
     else:
         days_info = "Learning at your own pace — no pressure!"
     
-    example_question = SUBJECT_EXAMPLES.get(st.session_state.current_topic, "What is Newton's First Law?")
+    subject_data = SUBJECT_CONTENT.get(st.session_state.current_topic, SUBJECT_CONTENT["Other"])
     
     welcome = f"""👋 Hey! I'm your FocusFlow coach.
 
 **Current Setup:** {st.session_state.exam_goal} | {st.session_state.current_topic} | {days_info}
 
 I can help you:
-- 🧠 **Explain concepts** — Just ask "Explain Photosynthesis"
+- 🧠 **Explain concepts** — Just ask "{subject_data['example_concept']}"
 - ❓ **Socratic mode** — I'll ask you a question first to check your understanding. Stuck? Click the button!
 - 📸 **Solve from images** — Upload a problem photo
 - 📝 **Practice questions** — Quick mock tests
 
-**Try asking: "{example_question}"**"""
+**Try asking: "{subject_data['example_question']}"**"""
     
     current_messages.append({
         "role": "assistant",
