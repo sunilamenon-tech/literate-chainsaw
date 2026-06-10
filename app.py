@@ -97,39 +97,57 @@ st.title("⚡ FocusFlow")
 # ============================================================
 # CHECK API KEY
 # ============================================================
-try:
-    OPENROUTER_KEY = st.secrets["OPENROUTER_API_KEY"]
-    api_ready = True
-except:
-    api_ready = False
+api_key = None
+key_source = None
 
-if not api_ready:
+# Try OpenRouter first
+try:
+    api_key = st.secrets["OPENROUTER_API_KEY"]
+    if api_key and len(api_key) > 10:
+        key_source = "openrouter"
+except:
+    pass
+
+# Try Google as fallback
+if not key_source:
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        if api_key and len(api_key) > 10:
+            key_source = "google"
+    except:
+        pass
+
+if not key_source:
     st.markdown("""
     <div class='setup-box'>
         <h2>🔧 Setup Required</h2>
-        <p>You need an OpenRouter API key to use FocusFlow.</p>
+        <p>You need to add an API key to use FocusFlow.</p>
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("### How to get your free API key:")
+    st.markdown("### Option 1: OpenRouter (Recommended — Free, Works Everywhere)")
     st.markdown("""
     <div class='setup-step'>
-        <b>Step 1:</b> Go to <a href='https://openrouter.ai/keys' target='_blank'>openrouter.ai/keys</a>
-    </div>
-    <div class='setup-step'>
-        <b>Step 2:</b> Click "Sign in" → Sign up with your Google account (30 seconds)
-    </div>
-    <div class='setup-step'>
-        <b>Step 3:</b> Click "Create API Key" → Copy the key
-    </div>
-    <div class='setup-step'>
-        <b>Step 4:</b> In your Streamlit Cloud dashboard, go to your app → Click the 🔑 key icon (Secrets)<br>
-        Add this line:<br>
+        <b>Step 1:</b> Go to <a href='https://openrouter.ai/keys' target='_blank'>openrouter.ai/keys</a><br>
+        <b>Step 2:</b> Click "Sign in" → Sign in with Google (30 seconds)<br>
+        <b>Step 3:</b> Click "Create API Key" → Copy the key (starts with <code>sk-or-v1-</code>)<br>
+        <b>Step 4:</b> In your Streamlit Cloud Secrets, add:<br>
         <code>OPENROUTER_API_KEY = "sk-or-v1-your-key-here"</code>
     </div>
     """, unsafe_allow_html=True)
     
-    st.error("⛔ Add OPENROUTER_API_KEY to your Streamlit secrets and refresh this page.")
+    st.markdown("### Option 2: Google AI Studio")
+    st.markdown("""
+    <div class='setup-step'>
+        <b>Step 1:</b> Go to <a href='https://aistudio.google.com/app/apikey' target='_blank'>aistudio.google.com/app/apikey</a><br>
+        <b>Step 2:</b> Click "Create API key"<br>
+        <b>Step 3:</b> Copy the FULL key (starts with <code>AIzaSy</code>)<br>
+        <b>Step 4:</b> In your Streamlit Cloud Secrets, add:<br>
+        <code>GOOGLE_API_KEY = "AIzaSy-your-full-key-here"</code>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.error("⛔ No valid API key found. Add OPENROUTER_API_KEY or GOOGLE_API_KEY to your Streamlit secrets and refresh.")
     st.stop()
 
 # ============================================================
@@ -220,8 +238,11 @@ with st.sidebar:
     st.divider()
     
     st.markdown("### 🔌 AI Status")
-    st.success("✅ OpenRouter Connected")
-    st.caption("Using: google/gemini-2.0-flash-exp:free")
+    if key_source == "openrouter":
+        st.success("✅ Using OpenRouter")
+    else:
+        st.success("✅ Using Google AI")
+    st.caption(f"Key: ...{api_key[-6:]}")
     
     st.divider()
     
@@ -347,15 +368,12 @@ def detect_intent(prompt: str) -> str:
     return "socratic"
 
 # ============================================================
-# AI RESPONSE FUNCTION — OPENROUTER ONLY
+# AI RESPONSE FUNCTION
 # ============================================================
 
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=None):
-    """Call OpenRouter API and return response text."""
+    """Call AI API and return response text."""
     try:
-        api_key = st.secrets["OPENROUTER_API_KEY"]
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        
         days_left = (st.session_state.test_date - date.today()).days
         crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
         
@@ -406,43 +424,78 @@ A) Mitochondria  B) Chloroplast  C) Nucleus  D) Ribosome
 Take your time! If you're stuck, click the ⚡ button below 👇"
 """
         
-        messages = [{"role": "system", "content": system_prompt}]
+        # ==================== OPENROUTER ====================
+        if key_source == "openrouter":
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            if uploaded_image:
+                image_bytes = uploaded_image.getvalue()
+                image_b64 = base64.b64encode(image_bytes).decode()
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:{uploaded_image.type};base64,{image_b64}"}}
+                    ]
+                })
+            else:
+                messages.append({"role": "user", "content": prompt})
+            
+            payload = {
+                "model": "google/gemini-2.0-flash-exp:free",
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://focusflow.app",
+                "X-Title": "FocusFlow"
+            }
+            
+            response = requests.post(url, json=payload, headers=headers, timeout=30).json()
+            
+            if 'choices' in response and response['choices']:
+                return response['choices'][0]['message']['content'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown error')
+                return f"⚠️ API Error: {error}", "error"
         
-        # Add image if uploaded
-        if uploaded_image:
-            image_bytes = uploaded_image.getvalue()
-            image_b64 = base64.b64encode(image_bytes).decode()
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:{uploaded_image.type};base64,{image_b64}"}}
-                ]
-            })
+        # ==================== GOOGLE GEMINI ====================
         else:
-            messages.append({"role": "user", "content": prompt})
-        
-        payload = {
-            "model": "google/gemini-2.0-flash-exp:free",
-            "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 1000
-        }
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://focusflow.app",
-            "X-Title": "FocusFlow"
-        }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30).json()
-        
-        if 'choices' in response and response['choices']:
-            return response['choices'][0]['message']['content'], msg_type
-        else:
-            error = response.get('error', {}).get('message', 'Unknown error')
-            return f"⚠️ API Error: {error}", "error"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
+            
+            content_parts = [{"text": system_prompt + "\n\nUser: " + prompt}]
+            
+            if uploaded_image:
+                image_bytes = uploaded_image.getvalue()
+                image_b64 = base64.b64encode(image_bytes).decode()
+                content_parts.append({
+                    "inline_data": {
+                        "mime_type": uploaded_image.type,
+                        "data": image_b64
+                    }
+                })
+            
+            payload = {
+                "contents": [{"parts": content_parts}],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 1000
+                }
+            }
+            
+            response = requests.post(url, json=payload, timeout=30).json()
+            
+            if 'candidates' in response and response['candidates']:
+                return response['candidates'][0]['content']['parts'][0]['text'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown API error')
+                return f"⚠️ Google AI Error: {error}\n\nYour key might not have Gemini access. Try OpenRouter instead (free, no setup hassles).", "error"
             
     except requests.exceptions.RequestException as e:
         return f"🌐 Connection error: {str(e)}", "error"
@@ -615,4 +668,73 @@ qa_col1, qa_col2, qa_col3, qa_col4 = st.columns(4)
 
 with qa_col1:
     if st.button("📄 Cheat Sheet", use_container_width=True):
-        cheat_prompt
+        cheat_prompt = f"Give me a comprehensive cheat sheet for {st.session_state.current_topic} ({st.session_state.exam_goal})"
+        current_messages.append({
+            "role": "user",
+            "content": cheat_prompt,
+            "msg_type": "user_question"
+        })
+        st.session_state.pending_ai_request = {
+            "prompt": cheat_prompt,
+            "msg_type": "direct",
+            "topic": f"{st.session_state.current_topic} Cheat Sheet",
+            "has_image": False
+        }
+        st.rerun()
+
+with qa_col2:
+    if st.button("📝 Mock Test", use_container_width=True):
+        mock_prompt = f"Generate 5 practice questions for {st.session_state.current_topic} ({st.session_state.exam_goal}) with answers and explanations"
+        current_messages.append({
+            "role": "user",
+            "content": mock_prompt,
+            "msg_type": "user_question"
+        })
+        st.session_state.pending_ai_request = {
+            "prompt": mock_prompt,
+            "msg_type": "direct",
+            "topic": f"{st.session_state.current_topic} Mock Test",
+            "has_image": False
+        }
+        st.rerun()
+
+with qa_col3:
+    if st.button("📊 My Stats", use_container_width=True):
+        total_msgs = sum(len(msgs) for msgs in st.session_state.threads.values())
+        weak_topics = list(st.session_state.weak_areas.keys())[:3]
+        focus_time = st.session_state.total_study_minutes
+        
+        stats_msg = f"""📊 Your FocusFlow Stats
+
+🔥 **Study Streak:** {st.session_state.study_streak} days
+⏱️ **Focus Time:** {focus_time} minutes ({focus_time // 60}h {focus_time % 60}m)
+💬 **Total Messages:** {total_msgs}
+⚠️ **Focus Areas:** {', '.join(weak_topics) if weak_topics else 'None yet — keep going!'}
+
+Keep crushing it! 🚀"""
+        
+        current_messages.append({
+            "role": "assistant",
+            "content": stats_msg,
+            "msg_type": "stats",
+            "subject": "System"
+        })
+        st.rerun()
+
+with qa_col4:
+    if st.button("💾 Export", use_container_width=True):
+        chat_text = []
+        for msg in current_messages:
+            if not msg.get("hidden"):
+                prefix = "🧑‍🎓 You" if msg["role"] == "user" else "🤖 FocusFlow"
+                chat_text.append(f"{prefix}:\n{msg['content']}")
+        
+        export_text = f"FocusFlow Chat Export\n{'='*50}\nExam: {st.session_state.exam_goal}\nSubject: {st.session_state.current_topic}\nDate: {date.today()}\n{'='*50}\n\n" + "\n\n---\n\n".join(chat_text)
+        
+        st.download_button(
+            "📥 Download Chat",
+            export_text,
+            file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
