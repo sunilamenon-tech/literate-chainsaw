@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 from datetime import date
 
 st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="wide")
@@ -6,52 +7,50 @@ st.markdown("""<style>.stApp {background-color: #FFF9E6;} .stButton>button {back
 
 st.title("⚡ FocusFlow")
 
-# SIDEBAR
+# 1. SIDEBAR
 with st.sidebar:
-    st.header("🎯 Your Study Context")
-    exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "JEE Advanced", "NEET", "10th Boards", "12th Boards", "Other"])
+    exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "NEET", "10th Boards", "12th Boards", "Other"])
     current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "Other"])
-    
-    test_date = None
-    if exam_goal != "Other":
-        test_date = st.date_input("When is your test?", min_value=date.today())
-    
+    test_date = st.date_input("When is your test?", min_value=date.today())
     if st.button("Sync My Goal"):
-        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Prepping for {exam_goal}. Let's master {current_topic}!"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"Context updated! Ready to master {current_topic} for {exam_goal}!"}]
         st.rerun()
 
-    if test_date:
-        days_left = (test_date - date.today()).days
-        tension = "High 🚨" if days_left < 7 else ("Medium ⚠️" if days_left < 20 else "Low 😌")
-        st.markdown(f"--- \n### 📊 Your Status \n- **Tension:** {tension} \n- **Days Left:** {days_left}")
-
-# CHAT
+# 2. INITIALIZE CHAT
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Hi! Set your goal and ask me anything!"}]
 
-for message in st.session_state.messages:
+# 3. DISPLAY CHAT
+for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if message["role"] == "assistant" and i > 0 and "?" in message["content"] and "cheat sheet" not in message["content"].lower():
+            if st.button("⚡ Stuck? Get a hint/cheat sheet", key=f"btn_{i}"):
+                st.session_state.messages.append({"role": "user", "content": "Just give me the cheat sheet."})
+                st.rerun()
 
-# CHAT LOGIC (Replace your existing Chat Logic block at the bottom of app.py)
+# 4. CHAT INPUT & PROCESSING
 if prompt := st.chat_input("Ask a question..."):
+    # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.rerun()
-
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    
+    # Process AI response
     with st.chat_message("assistant"):
         with st.spinner('Thinking...'):
-            user_msg = st.session_state.messages[-1]["content"].lower()
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
             
-            # THE LOGIC FLOW
-            if any(x in user_msg for x in ["hi", "hello", "hey"]):
-                answer = "Hey there! 👋 I'm FocusFlow, your study coach. I'm here to help you crush your goals. What are we working on today?"
-            elif any(x in user_msg for x in ["cheat sheet", "give me", "explain"]):
-                answer = f"**{current_topic} Summary:** \n1. Focus on core concepts. \n2. Review your key formulas. \n3. Practice active recall. Keep pushing!"
+            # Logic to decide persona
+            if any(x in prompt.lower() for x in ["cheat sheet", "give me", "explain"]):
+                full_prompt = f"Context: {exam_goal}, {current_topic}. Cheat Sheet for: {prompt}. Be direct."
             else:
-                answer = f"That's an interesting point about {user_msg}! To help me guide you better, what specific part of this topic is currently blocking your progress?"
+                full_prompt = f"Context: {exam_goal}, {current_topic}. User: {prompt}. Act as a Socratic Coach: Ask ONE diagnostic question to check knowledge."
             
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            st.rerun()
-        st.rerun()
+            response = requests.post(url, json={"contents": [{"parts": [{"text": full_prompt}]}]}).json()
+            
+            if 'candidates' in response:
+                answer = response['candidates'][0]['content']['parts'][0]['text']
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                st.rerun()
+            else:
+                st.error("AI is busy. Try again!")
