@@ -330,7 +330,6 @@ with st.sidebar:
     
     st.divider()
     
-       st.divider()
     
     # ============================================================
     # POMODORO TIMER — FIXED WITH JAVASCRIPT
