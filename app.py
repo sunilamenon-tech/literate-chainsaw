@@ -357,6 +357,141 @@ with st.sidebar:
     # ============================================================
     # ENHANCED DAILY CHALLENGE SECTION
     # ============================================================
+  with st.sidebar:
+    st.markdown("### 🎯 Your Goal")
+    
+    exam_goal = st.selectbox(
+        "Exam/Goal",
+        ["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"],
+        index=["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"].index(st.session_state.exam_goal)
+    )
+    
+    current_topic = st.selectbox(
+        "Subject",
+        ["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"],
+        index=["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"].index(st.session_state.current_topic)
+    )
+    
+    if exam_goal == "Other":
+        st.markdown("**Do you have a specific exam date?**")
+        has_date = st.radio(
+            "Choose one:",
+            ["Yes, I have a test date", "No, just learning"],
+            index=0 if st.session_state.has_specific_date else 1,
+            label_visibility="collapsed"
+        )
+        st.session_state.has_specific_date = (has_date == "Yes, I have a test date")
+        
+        if st.session_state.has_specific_date:
+            test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
+        else:
+            test_date = date.today() + timedelta(days=365)
+            st.caption("📌 No countdown. Learning at your own pace!")
+    else:
+        st.session_state.has_specific_date = True
+        test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
+    
+    days_left = (test_date - date.today()).days
+    
+    if st.session_state.has_specific_date:
+        if days_left <= 3:
+            st.error(f"🚨 {days_left} days left! CRUNCH MODE")
+        elif days_left <= 14:
+            st.warning(f"⏰ {days_left} days left")
+        else:
+            st.info(f"📅 {days_left} days left")
+    
+    if st.button("🔄 Update Context", use_container_width=True):
+        st.session_state.exam_goal = exam_goal
+        st.session_state.current_topic = current_topic
+        st.session_state.test_date = test_date
+        
+        if current_topic not in st.session_state.threads:
+            st.session_state.threads[current_topic] = []
+        
+        st.session_state.current_thread = current_topic
+        st.toast(f"Switched to {current_topic}!")
+        st.rerun()
+    
+    st.divider()
+    
+    # AI Status
+    st.markdown("### 🔌 AI Status")
+    st.success(f"✅ {api_config['provider'].upper()}")
+    st.caption(f"Model: {api_config['model'].split('/')[-1]}")
+    
+    st.divider()
+    
+    # Study Streak
+    st.markdown("### 🔥 Study Streak")
+    today = date.today()
+    if st.session_state.last_study_date == today - timedelta(days=1):
+        st.session_state.study_streak += 1
+        st.session_state.last_study_date = today
+    elif st.session_state.last_study_date != today:
+        st.session_state.study_streak = 1
+        st.session_state.last_study_date = today
+    
+    st.markdown(f"<div class='streak-badge'>🔥 {st.session_state.study_streak} day streak</div>", unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Weak Areas
+    st.markdown("### ⚠️ Focus Areas")
+    if st.session_state.weak_areas:
+        sorted_weak = sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[:5]
+        for topic, count in sorted_weak:
+            st.markdown(f"<span class='weak-area-tag'>{topic} ({count})</span>", unsafe_allow_html=True)
+    else:
+        st.caption("Keep studying to see your focus areas!")
+    
+    st.divider()
+    
+    # Thread Switcher
+    st.markdown("### 💬 Chat Threads")
+    for thread_name in list(st.session_state.threads.keys()):
+        cols = st.columns([4, 1])
+        with cols[0]:
+            active = "✅ " if thread_name == st.session_state.current_thread else ""
+            if st.button(f"{active}📁 {thread_name}", key=f"thread_{thread_name}", use_container_width=True):
+                st.session_state.current_thread = thread_name
+                st.rerun()
+        with cols[1]:
+            if thread_name != "General" and st.button("🗑️", key=f"del_{thread_name}"):
+                del st.session_state.threads[thread_name]
+                st.session_state.current_thread = "General"
+                st.rerun()
+    
+    st.divider()
+    
+    # Pomodoro Timer
+    st.markdown("### ⏱️ Focus Timer")
+    pomo_cols = st.columns(2)
+    with pomo_cols[0]:
+        if st.button("▶️ 25m", use_container_width=True):
+            st.session_state.pomodoro_active = True
+            st.session_state.pomodoro_end = datetime.now() + timedelta(minutes=25)
+    with pomo_cols[1]:
+        if st.button("⏹️ Stop", use_container_width=True):
+            st.session_state.pomodoro_active = False
+            st.session_state.pomodoro_end = None
+    
+    if st.session_state.pomodoro_active and st.session_state.pomodoro_end:
+        remaining = st.session_state.pomodoro_end - datetime.now()
+        if remaining.total_seconds() > 0:
+            mins, secs = divmod(int(remaining.total_seconds()), 60)
+            st.markdown(f"<h3 style='text-align: center; color: #FF6600;'>{mins:02d}:{secs:02d}</h3>", unsafe_allow_html=True)
+        else:
+            st.session_state.pomodoro_active = False
+            st.session_state.total_study_minutes += 25
+            st.balloons()
+            st.success("🎉 25 min done! Take a 5 min break.")
+    
+    st.divider()
+    
+    # ============================================================
+    # ENHANCED DAILY CHALLENGE WITH PRE-BUILT QUESTIONS
+    # ============================================================
     st.markdown("### 🎯 Daily Challenge")
     
     today = date.today()
@@ -366,9 +501,7 @@ with st.sidebar:
         yesterday = today - timedelta(days=1)
         last_challenge_date = st.session_state.daily_challenge_date
         
-        # If last challenge was from yesterday and NOT completed → MISSED
         if last_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
-            # Record as missed
             if st.session_state.daily_challenge:
                 st.session_state.challenge_history.append({
                     "date": str(yesterday),
@@ -376,13 +509,11 @@ with st.sidebar:
                     "challenge": st.session_state.daily_challenge,
                     "completed": False
                 })
-            # Reset streak
             st.session_state.challenge_streak = 0
             st.session_state.daily_challenge = None
             st.session_state.daily_challenge_date = None
             st.session_state.daily_challenge_completed = False
     
-    # Generate new challenge for today if needed
     if st.session_state.daily_challenge_date != today:
         st.session_state.daily_challenge = None
         st.session_state.daily_challenge_completed = False
@@ -390,23 +521,21 @@ with st.sidebar:
     # CHALLENGE STREAK BADGE
     if st.session_state.challenge_streak > 0:
         flame = "🔥" * min(st.session_state.challenge_streak, 5)
-        st.markdown(f"<div class='streak-badge'><span class='streak-flame'>{flame}</span> {st.session_state.challenge_streak} day challenge streak!</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='streak-badge'><span class='streak-flame'>{flame}</span> {st.session_state.challenge_streak} day streak!</div>", unsafe_allow_html=True)
     
     # DISPLAY CHALLENGE
     if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-        st.markdown(f"<div class='challenge-box'><b>📋 Today's Challenge:</b><br>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
         
         if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
             st.session_state.daily_challenge_completed = True
             st.session_state.last_challenge_completed_date = today
             
-            # Update streak
             if st.session_state.last_challenge_completed_date == today - timedelta(days=1):
                 st.session_state.challenge_streak += 1
             else:
                 st.session_state.challenge_streak = 1
             
-            # Record in history
             st.session_state.challenge_history.append({
                 "date": str(today),
                 "subject": st.session_state.current_topic,
@@ -424,26 +553,93 @@ with st.sidebar:
     else:
         # No challenge generated yet for today
         if st.button("🎯 Generate Today's Challenge", use_container_width=True):
-            # Generate challenge based on weak areas if available
+            import random
+            
+            # If weak areas exist, use AI to create targeted challenge (1 API call)
             if st.session_state.weak_areas:
                 weakest_topic = sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[0][0]
-                challenge_types = [
-                    f"Revise and solve 3 questions from {weakest_topic}",
-                    f"Create a cheat sheet for {weakest_topic}",
-                    f"Explain {weakest_topic} to yourself out loud"
-                ]
-                import random
-                st.session_state.daily_challenge = random.choice(challenge_types)
+                challenge_text = random.choice([
+                    "Create a cheat sheet for {topic}",
+                    "Explain {topic} to yourself as if teaching a 5-year-old",
+                    "Find 3 previous year questions on {topic} and solve them",
+                    "Draw a mind map of {topic} on paper",
+                    "Write 5 flashcards for {topic}"
+                ]).format(topic=weakest_topic)
+                st.session_state.daily_challenge = f"📋 <b>Today's Challenge:</b><br>{challenge_text}<br><br><i>💡 This is based on your weak area: {weakest_topic}</i>"
+            
+            # Otherwise use pre-built question bank (ZERO API cost)
             else:
-                challenge_types = [
-                    f"Solve 5 MCQs from {st.session_state.current_topic}",
-                    f"Write a summary of one chapter from {st.session_state.current_topic}",
-                    f"Create 5 flashcards for {st.session_state.current_topic}",
-                    f"Solve 2 previous year questions from {st.session_state.current_topic}",
-                    f"Teach one concept from {st.session_state.current_topic} to a friend (or yourself)"
-                ]
-                import random
-                st.session_state.daily_challenge = random.choice(challenge_types)
+                CHALLENGE_BANKS = {
+                    "Physics": [
+                        {"task": "Solve these 3 problems:", "questions": [
+                            "1. A car accelerates from 0 to 20 m/s in 5s. Find acceleration.",
+                            "2. A 5kg object is pushed with 10N force. Find acceleration (F=ma).",
+                            "3. A ball is thrown upward at 20 m/s. Find max height (g=10 m/s²)."
+                        ]},
+                        {"task": "Concept check:", "questions": [
+                            "1. State Newton's First Law with one real-life example.",
+                            "2. Differentiate between speed and velocity.",
+                            "3. What is centripetal force? Give an example."
+                        ]}
+                    ],
+                    "Chemistry": [
+                        {"task": "Balance these equations:", "questions": [
+                            "1. H₂ + O₂ → H₂O",
+                            "2. Fe + O₂ → Fe₂O₃",
+                            "3. Al + HCl → AlCl₃ + H₂"
+                        ]}
+                    ],
+                    "Maths": [
+                        {"task": "Solve these quadratic equations:", "questions": [
+                            "1. x² - 5x + 6 = 0",
+                            "2. 2x² + 7x + 3 = 0",
+                            "3. x² - 4 = 0"
+                        ]}
+                    ],
+                    "Biology": [
+                        {"task": "Answer these cell biology questions:", "questions": [
+                            "1. Name the powerhouse of the cell and its function.",
+                            "2. Differentiate between plant and animal cells (3 differences).",
+                            "3. What is osmosis? Give a real-life example."
+                        ]}
+                    ],
+                    "English": [
+                        {"task": "Literature analysis:", "questions": [
+                            "1. What is the central theme of 'The Road Not Taken'?",
+                            "2. Identify 2 literary devices used in the poem.",
+                            "3. Why did the poet feel sorry in the poem?"
+                        ]}
+                    ],
+                    "History": [
+                        {"task": "Ancient Indian History:", "questions": [
+                            "1. Name 2 major cities of the Indus Valley Civilization.",
+                            "2. What was the Great Bath used for?",
+                            "3. Name the script used by the Harappans."
+                        ]},
+                        {"task": "World War I:", "questions": [
+                            "1. Name 2 immediate causes of WWI.",
+                            "2. What was the Treaty of Versailles?",
+                            "3. Which countries formed the Triple Alliance?"
+                        ]}
+                    ],
+                    "Other": [
+                        {"task": "General practice:", "questions": [
+                            "1. Solve: 15 + 27 × 3 - 8",
+                            "2. Convert 3/4 to decimal and percentage.",
+                            "3. Find the area of a circle with radius 7cm (π=22/7)."
+                        ]}
+                    ]
+                }
+                
+                subject_bank = CHALLENGE_BANKS.get(st.session_state.current_topic, CHALLENGE_BANKS["Other"])
+                selected = random.choice(subject_bank)
+                
+                questions_html = "<br>".join(selected["questions"])
+                st.session_state.daily_challenge = f"""
+📋 <b>Today's Challenge: {selected['task']}</b><br><br>
+{questions_html}<br><br>
+<i>💡 Solve these on paper or in your notebook, then mark complete!</i>
+"""
             
             st.session_state.daily_challenge_date = today
             st.session_state.daily_challenge_completed = False
