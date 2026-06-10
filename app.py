@@ -547,12 +547,25 @@ current_messages = st.session_state.threads[st.session_state.current_thread]
 
 days_left = (st.session_state.test_date - date.today()).days
 
+# Subject-specific example questions
+SUBJECT_EXAMPLES = {
+    "Physics": "What is Newton's First Law?",
+    "Chemistry": "How do I balance chemical equations?",
+    "Maths": "How do I solve quadratic equations?",
+    "Biology": "What is photosynthesis?",
+    "English": "Explain the theme of 'The Road Not Taken'",
+    "History": "What were the main causes of World War I?",
+    "Other": "What is the Pythagorean Theorem?"
+}
+
 # Welcome message if thread is empty
 if not current_messages:
     if st.session_state.has_specific_date:
         days_info = f"**{days_left} days** until your {st.session_state.exam_goal} exam!"
     else:
         days_info = "Learning at your own pace — no pressure!"
+    
+    example_question = SUBJECT_EXAMPLES.get(st.session_state.current_topic, "What is Newton's First Law?")
     
     welcome = f"""👋 Hey! I'm your FocusFlow coach.
 
@@ -564,7 +577,7 @@ I can help you:
 - 📸 **Solve from images** — Upload a problem photo
 - 📝 **Practice questions** — Quick mock tests
 
-**Try asking: "What is Newton's First Law?"**"""
+**Try asking: "{example_question}"**"""
     
     current_messages.append({
         "role": "assistant",
