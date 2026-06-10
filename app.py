@@ -334,6 +334,10 @@ with st.sidebar:
 # POMODORO TIMER — FIXED WITH JAVASCRIPT
 # ============================================================
 
+# ============================================================
+# POMODORO TIMER — FIXED WITH JAVASCRIPT
+# ============================================================
+
 st.markdown("### ⏱️ Focus Timer")
 
 # Start / Stop buttons
