@@ -89,6 +89,13 @@ st.markdown("""
         margin: 8px 0;
         border-left: 3px solid #FF6600;
     }
+    .model-selector {
+        background: white;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        margin: 8px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,7 +107,6 @@ st.title("⚡ FocusFlow")
 api_key = None
 key_source = None
 
-# Try OpenRouter first
 try:
     api_key = st.secrets["OPENROUTER_API_KEY"]
     if api_key and len(api_key) > 10:
@@ -108,7 +114,6 @@ try:
 except:
     pass
 
-# Try Google as fallback
 if not key_source:
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -121,7 +126,7 @@ if not key_source:
     st.markdown("""
     <div class='setup-box'>
         <h2>🔧 Setup Required</h2>
-        <p>You need to add an API key to use FocusFlow.</p>
+        <p>You need an API key to use FocusFlow.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -129,25 +134,14 @@ if not key_source:
     st.markdown("""
     <div class='setup-step'>
         <b>Step 1:</b> Go to <a href='https://openrouter.ai/keys' target='_blank'>openrouter.ai/keys</a><br>
-        <b>Step 2:</b> Click "Sign in" → Sign in with Google (30 seconds)<br>
-        <b>Step 3:</b> Click "Create API Key" → Copy the key (starts with <code>sk-or-v1-</code>)<br>
-        <b>Step 4:</b> In your Streamlit Cloud Secrets, add:<br>
-        <code>OPENROUTER_API_KEY = "sk-or-v1-your-key-here"</code>
+        <b>Step 2:</b> Sign in with Google (30 seconds)<br>
+        <b>Step 3:</b> Create API Key → Copy it (starts with <code>sk-or-v1-</code>)<br>
+        <b>Step 4:</b> In Streamlit Cloud Secrets, add:<br>
+        <code>OPENROUTER_API_KEY = "sk-or-v1-your-key"</code>
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("### Option 2: Google AI Studio")
-    st.markdown("""
-    <div class='setup-step'>
-        <b>Step 1:</b> Go to <a href='https://aistudio.google.com/app/apikey' target='_blank'>aistudio.google.com/app/apikey</a><br>
-        <b>Step 2:</b> Click "Create API key"<br>
-        <b>Step 3:</b> Copy the FULL key (starts with <code>AIzaSy</code>)<br>
-        <b>Step 4:</b> In your Streamlit Cloud Secrets, add:<br>
-        <code>GOOGLE_API_KEY = "AIzaSy-your-full-key-here"</code>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.error("⛔ No valid API key found. Add OPENROUTER_API_KEY or GOOGLE_API_KEY to your Streamlit secrets and refresh.")
+    st.error("⛔ Add OPENROUTER_API_KEY to your Streamlit secrets and refresh.")
     st.stop()
 
 # ============================================================
@@ -170,6 +164,7 @@ defaults = {
     "daily_challenge": None,
     "last_challenge_date": None,
     "pending_ai_request": None,
+    "openrouter_model": "google/gemini-1.5-flash:free",  # Default to most reliable free model
 }
 
 for key, value in defaults.items():
@@ -237,12 +232,29 @@ with st.sidebar:
     
     st.divider()
     
+    # AI Status & Model Selector
     st.markdown("### 🔌 AI Status")
-    if key_source == "openrouter":
-        st.success("✅ Using OpenRouter")
-    else:
-        st.success("✅ Using Google AI")
-    st.caption(f"Key: ...{api_key[-6:]}")
+    st.success("✅ Connected")
+    
+    # MODEL SELECTOR — KEY FIX: Let user switch if one model fails
+    st.markdown("### 🤖 Model")
+    st.caption("If you get 'No endpoints', switch model:")
+    
+    model_options = [
+        "google/gemini-1.5-flash:free",
+        "meta-llama/llama-3.2-3b-instruct:free", 
+        "mistralai/mistral-7b-instruct:free",
+        "google/gemini-2.0-flash-exp:free",
+    ]
+    
+    selected_model = st.selectbox(
+        "Choose Model",
+        model_options,
+        index=model_options.index(st.session_state.openrouter_model) if st.session_state.openrouter_model in model_options else 0
+    )
+    st.session_state.openrouter_model = selected_model
+    
+    st.caption(f"Current: `{selected_model.split('/')[-1]}`")
     
     st.divider()
     
@@ -372,8 +384,11 @@ def detect_intent(prompt: str) -> str:
 # ============================================================
 
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=None):
-    """Call AI API and return response text."""
+    """Call OpenRouter API and return response text."""
     try:
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        model = st.session_state.openrouter_model
+        
         days_left = (st.session_state.test_date - date.today()).days
         crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
         
@@ -424,78 +439,44 @@ A) Mitochondria  B) Chloroplast  C) Nucleus  D) Ribosome
 Take your time! If you're stuck, click the ⚡ button below 👇"
 """
         
-        # ==================== OPENROUTER ====================
-        if key_source == "openrouter":
-            url = "https://openrouter.ai/api/v1/chat/completions"
-            
-            messages = [{"role": "system", "content": system_prompt}]
-            
-            if uploaded_image:
-                image_bytes = uploaded_image.getvalue()
-                image_b64 = base64.b64encode(image_bytes).decode()
-                messages.append({
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:{uploaded_image.type};base64,{image_b64}"}}
-                    ]
-                })
-            else:
-                messages.append({"role": "user", "content": prompt})
-            
-            payload = {
-                "model": "google/gemini-2.0-flash-exp:free",
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 1000
-            }
-            
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://focusflow.app",
-                "X-Title": "FocusFlow"
-            }
-            
-            response = requests.post(url, json=payload, headers=headers, timeout=30).json()
-            
-            if 'choices' in response and response['choices']:
-                return response['choices'][0]['message']['content'], msg_type
-            else:
-                error = response.get('error', {}).get('message', 'Unknown error')
-                return f"⚠️ API Error: {error}", "error"
+        messages = [{"role": "system", "content": system_prompt}]
         
-        # ==================== GOOGLE GEMINI ====================
+        if uploaded_image:
+            image_bytes = uploaded_image.getvalue()
+            image_b64 = base64.b64encode(image_bytes).decode()
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{uploaded_image.type};base64,{image_b64}"}}
+                ]
+            })
         else:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
-            
-            content_parts = [{"text": system_prompt + "\n\nUser: " + prompt}]
-            
-            if uploaded_image:
-                image_bytes = uploaded_image.getvalue()
-                image_b64 = base64.b64encode(image_bytes).decode()
-                content_parts.append({
-                    "inline_data": {
-                        "mime_type": uploaded_image.type,
-                        "data": image_b64
-                    }
-                })
-            
-            payload = {
-                "contents": [{"parts": content_parts}],
-                "generationConfig": {
-                    "temperature": 0.7,
-                    "maxOutputTokens": 1000
-                }
-            }
-            
-            response = requests.post(url, json=payload, timeout=30).json()
-            
-            if 'candidates' in response and response['candidates']:
-                return response['candidates'][0]['content']['parts'][0]['text'], msg_type
-            else:
-                error = response.get('error', {}).get('message', 'Unknown API error')
-                return f"⚠️ Google AI Error: {error}\n\nYour key might not have Gemini access. Try OpenRouter instead (free, no setup hassles).", "error"
+            messages.append({"role": "user", "content": prompt})
+        
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 1000
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://focusflow.app",
+            "X-Title": "FocusFlow"
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30).json()
+        
+        if 'choices' in response and response['choices']:
+            return response['choices'][0]['message']['content'], msg_type
+        else:
+            error = response.get('error', {}).get('message', 'Unknown error')
+            if "No endpoints" in error or "endpoints" in error.lower():
+                return f"⚠️ Model temporarily unavailable: `{model.split('/')[-1]}`\n\n💡 **Fix:** Go to the sidebar → 🤖 Model → Select a different model (try `llama-3.2-3b` or `mistral-7b`)", "error"
+            return f"⚠️ API Error: {error}", "error"
             
     except requests.exceptions.RequestException as e:
         return f"🌐 Connection error: {str(e)}", "error"
@@ -508,7 +489,6 @@ Take your time! If you're stuck, click the ⚡ button below 👇"
 
 current_messages = st.session_state.threads[st.session_state.current_thread]
 
-# Recalculate days_left for welcome message
 days_left = (st.session_state.test_date - date.today()).days
 
 # Welcome message if thread is empty
@@ -557,7 +537,7 @@ for i, message in enumerate(current_messages):
         if message["role"] == "assistant" and "subject" in message:
             st.markdown(f"<span class='subject-pill'>📚 {message['subject']}</span>", unsafe_allow_html=True)
         
-        # "STUCK?" BUTTON — Only for active Socratic questions
+        # "STUCK?" BUTTON
         if (message["role"] == "assistant" and
             message.get("msg_type") == "socratic" and
             not message.get("resolved", False)):
@@ -577,7 +557,6 @@ for i, message in enumerate(current_messages):
                     "msg_type": "system_trigger"
                 })
                 
-                # Process trigger immediately
                 with st.chat_message("assistant"):
                     with st.spinner('Generating cheat sheet...'):
                         answer, _ = get_ai_response(trigger_prompt, "direct", message.get('topic', 'General'))
@@ -600,7 +579,7 @@ with st.expander("📎 Attach Image (Optional)"):
         st.image(uploaded_image, caption="Preview", use_column_width=True)
 
 # ============================================================
-# PROCESS PENDING AI REQUESTS (FROM BUTTONS)
+# PROCESS PENDING AI REQUESTS
 # ============================================================
 
 if st.session_state.pending_ai_request:
@@ -627,7 +606,7 @@ if st.session_state.pending_ai_request:
     st.rerun()
 
 # ============================================================
-# CHAT INPUT & PROCESSING
+# CHAT INPUT
 # ============================================================
 
 if prompt := st.chat_input("Ask a question..."):
