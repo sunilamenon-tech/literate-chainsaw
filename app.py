@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 from datetime import date, datetime, timedelta
-import base64
+import random
 
 # ============================================================
 # PAGE CONFIG
@@ -114,6 +114,13 @@ st.markdown("""
         font-size: 24px;
         animation: pulse 1.5s infinite;
     }
+    .followup-btn>button {
+        background-color: #2196F3 !important;
+        color: white !important;
+        border-radius: 20px !important;
+        font-weight: 600 !important;
+        margin-top: 6px !important;
+    }
     @keyframes pulse {
         0% { transform: scale(1); }
         50% { transform: scale(1.1); }
@@ -204,22 +211,281 @@ defaults = {
     "last_study_date": None,
     "weak_areas": {},
     "total_study_minutes": 0,
-    "pomodoro_active": False,
-    "pomodoro_end": None,
     "daily_challenge": None,
     "daily_challenge_date": None,
     "daily_challenge_completed": False,
+    "daily_challenge_subject": None,
     "challenge_streak": 0,
     "last_challenge_completed_date": None,
     "challenge_history": [],
     "pending_ai_request": None,
     "awaiting_answer": False,
     "last_socratic_question": None,
+    "original_question": None,        # FIX: pin original question
+    "last_followup_label": None,       # For dynamic follow-up button
+    "last_followup_prompt": None,
 }
 
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
+
+# ============================================================
+# CORE API CALL HELPER
+# ============================================================
+def call_api(messages_list, system_prompt):
+    """Single function to call whichever API is configured."""
+    provider = api_config["provider"]
+    model = api_config["model"]
+
+    try:
+        if provider == "groq":
+            payload = {
+                "model": model,
+                "messages": [{"role": "system", "content": system_prompt}] + messages_list,
+                "temperature": 0.7,
+                "max_tokens": 1500
+            }
+            headers = {
+                "Authorization": f"Bearer {api_config['key']}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
+            if 'choices' in response and response['choices']:
+                return response['choices'][0]['message']['content']
+            else:
+                return f"⚠️ Groq Error: {response.get('error', {}).get('message', 'Unknown error')}"
+
+        elif provider == "openrouter":
+            payload = {
+                "model": model,
+                "messages": [{"role": "system", "content": system_prompt}] + messages_list,
+                "temperature": 0.7,
+                "max_tokens": 1500
+            }
+            headers = {
+                "Authorization": f"Bearer {api_config['key']}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://focusflow.app",
+                "X-Title": "FocusFlow"
+            }
+            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
+            if 'choices' in response and response['choices']:
+                return response['choices'][0]['message']['content']
+            else:
+                return f"⚠️ OpenRouter Error: {response.get('error', {}).get('message', 'Unknown error')}"
+
+        else:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
+            # Convert to Google format
+            google_messages = []
+            for m in ([{"role": "system", "content": system_prompt}] + messages_list):
+                role = "user" if m["role"] in ("user", "system") else "model"
+                google_messages.append({"role": role, "parts": [{"text": m["content"]}]})
+            payload = {
+                "contents": google_messages,
+                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500}
+            }
+            response = requests.post(url, json=payload, timeout=30).json()
+            if 'candidates' in response and response['candidates']:
+                return response['candidates'][0]['content']['parts'][0]['text']
+            else:
+                return f"⚠️ Google Error: {response.get('error', {}).get('message', 'Unknown API error')}"
+
+    except requests.exceptions.RequestException as e:
+        return f"🌐 Connection error: {str(e)}"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+
+# ============================================================
+# GENERATE DAILY CHALLENGE VIA AI
+# ============================================================
+def generate_daily_challenge(subject, exam_goal):
+    system_prompt = f"""You are FocusFlow, an expert tutor for {exam_goal} students.
+Generate exactly 5 practice questions for the subject: {subject}.
+
+Rules:
+- Questions must be specific to {subject} and relevant for {exam_goal}
+- Mix of MCQ and short answer questions
+- Each question should be clearly numbered
+- MCQ options should be on the same line as the question or clearly indented
+- Do NOT include answers
+- Keep each question concise
+
+Format EXACTLY like this:
+**Today's Challenge: {subject} — 5 Questions**
+
+**Q1.** [Question text here]
+A) option  B) option  C) option  D) option
+
+**Q2.** [Question text here]
+A) option  B) option  C) option  D) option
+
+**Q3.** [Short answer question]
+
+**Q4.** [Question text here]
+A) option  B) option  C) option  D) option
+
+**Q5.** [Short answer question]
+"""
+    return call_api([{"role": "user", "content": f"Generate 5 {subject} questions for {exam_goal}"}], system_prompt)
+
+
+# ============================================================
+# GENERATE SMART FOLLOW-UP BUTTON LABEL
+# ============================================================
+def generate_followup(last_ai_reply, subject):
+    system_prompt = """You are a smart assistant. Based on the AI tutor's last reply, suggest ONE short follow-up action a student might want to take next.
+
+Reply with ONLY a JSON object like this (no extra text, no markdown):
+{"label": "📜 Explore more poems by Robert Frost", "prompt": "List more poems by Robert Frost and briefly describe each one"}
+
+Rules for label:
+- Start with a relevant emoji
+- Max 6 words
+- Should feel natural and helpful
+- Examples: "📄 Get full cheat sheet", "🔍 Go deeper into this", "📝 Give me practice questions", "💡 Show a solved example", "🔗 How does this connect to exam?"
+"""
+    result = call_api(
+        [{"role": "user", "content": f"Last AI reply was about: {last_ai_reply[:300]}"}],
+        system_prompt
+    )
+    try:
+        import json
+        # Clean up in case model adds backticks
+        result = result.strip().replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(result)
+        return parsed.get("label", "🔍 Explore further"), parsed.get("prompt", "Tell me more about this topic")
+    except:
+        return "🔍 Explore further", "Tell me more about this topic"
+
+
+# ============================================================
+# INTENT DETECTION
+# ============================================================
+def detect_intent(prompt: str) -> str:
+    prompt_lower = prompt.lower().strip()
+
+    direct_signals = [
+        "explain", "cheat sheet", "give me", "tell me", "what is",
+        "what are", "define", "formula for", "equation for",
+        "how does", "how do", "steps to", "method for",
+        "list of", "summary of", "overview of", "notes on",
+        "derive", "proof", "theorem", "law of", "principle of"
+    ]
+    if any(signal in prompt_lower for signal in direct_signals):
+        return "direct"
+
+    casual_signals = [
+        "hi", "hello", "hey", "what's up", "sup", "how are you",
+        "bored", "tired", "joke", "fun", "chat", "thanks", "thank you",
+        "bye", "goodbye", "see you", "good morning", "good night"
+    ]
+    if any(signal in prompt_lower for signal in casual_signals) and len(prompt_lower.split()) < 6:
+        return "casual"
+
+    struggle_signals = [
+        "hate", "difficult", "hard", "don't understand", "confused",
+        "stuck", "help me", "panic", "scared", "anxious", "worried",
+        "i can't", "i dont get", "no idea", "lost", "frustrated"
+    ]
+    if any(signal in prompt_lower for signal in struggle_signals):
+        return "empathetic"
+
+    return "socratic"
+
+
+# ============================================================
+# MAIN AI RESPONSE — NOW WITH FULL HISTORY + PINNED ORIGINAL Q
+# ============================================================
+def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
+    days_left = (st.session_state.test_date - date.today()).days
+    crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
+
+    # Build conversation history for context
+    current_messages = st.session_state.threads[st.session_state.current_thread]
+    history = []
+    for msg in current_messages:
+        if not msg.get("hidden") and msg.get("msg_type") not in ("welcome", "stats", "system_trigger"):
+            role = "user" if msg["role"] == "user" else "assistant"
+            history.append({"role": role, "content": msg["content"]})
+    # Keep last 10 exchanges for context window
+    history = history[-10:]
+
+    # Pin original question reminder
+    original_q_reminder = ""
+    if st.session_state.original_question:
+        original_q_reminder = f"\n\nIMPORTANT: The student's ORIGINAL question was: \"{st.session_state.original_question}\". Always keep this in mind. If the conversation drifts, bring it back to this."
+
+    if msg_type == "evaluate_answer":
+        system_prompt = f"""You are FocusFlow, a warm and encouraging tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
+
+The AI previously asked this Socratic question:
+"{st.session_state.last_socratic_question}"
+
+The student answered: "{prompt}"
+
+IMPORTANT: The student may have typed just a single option letter like "A", "B", "C", or "D".
+Match their answer against the options in the question above and evaluate accordingly.
+
+Your job:
+1. If CORRECT: Start with warm praise (e.g. "🎉 That's correct!"), then give the full clear explanation of the concept.
+2. If PARTIALLY CORRECT: Acknowledge what they got right, gently correct what's wrong, then explain the full concept.
+3. If INCORRECT: Be kind — say something like "Not quite, but great attempt! 💪", correct gently, then explain clearly.
+
+Format your explanation with markdown. Keep it concise but complete.
+End with an encouraging line like "You're doing great, keep it up! 🚀"
+Do NOT ask another question at the end."""
+
+    elif msg_type == "casual":
+        system_prompt = f"""You are FocusFlow, a warm study buddy.{original_q_reminder}
+Respond conversationally and warmly. Keep under 3 sentences. Be encouraging."""
+
+    elif msg_type == "empathetic":
+        system_prompt = f"""The student is struggling emotionally with studying.{original_q_reminder}
+Be deeply empathetic. Acknowledge their feelings. Share ONE motivational tip.
+Then gently suggest ONE tiny next step related to {st.session_state.current_topic}.
+Be warm, like a caring older sibling."""
+
+    elif msg_type == "direct" or crunch_mode:
+        system_prompt = f"""You are an expert {st.session_state.exam_goal} tutor for {st.session_state.current_topic}.{original_q_reminder}
+Provide a CLEAR, STRUCTURED explanation.
+Format with markdown:
+## 📋 [Topic Name]
+### 🔑 Core Concept
+### 🧮 Key Formula / Steps
+### ⚠️ Common Mistake
+### 💡 Quick Example"""
+
+    else:
+        system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
+
+Ask ONE specific diagnostic question to check the student's understanding.
+Rules:
+- Must relate directly to their question
+- Make it multiple choice (A, B, C, D) OR short numerical
+- Do NOT give the answer yet
+- End with: "Take your time! If you're stuck, click the ⚡ button below 👇"
+- Keep under 5 lines total"""
+
+    # Add current prompt to history
+    history.append({"role": "user", "content": prompt})
+    return call_api(history, system_prompt), msg_type
+
+
+# ============================================================
+# SUBJECT-SPECIFIC WELCOME CONTENT
+# ============================================================
+SUBJECT_CONTENT = {
+    "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?"},
+    "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?"},
+    "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?"},
+    "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?"},
+    "English": {"example_concept": "Explain the theme of 'The Road Not Taken'", "example_question": "What is the theme of 'The Road Not Taken'?"},
+    "History": {"example_concept": "Explain the causes of World War I", "example_question": "What were the main causes of World War I?"},
+    "Other": {"example_concept": "Explain the Pythagorean Theorem", "example_question": "What is the Pythagorean Theorem?"}
+}
 
 # ============================================================
 # SIDEBAR
@@ -248,7 +514,6 @@ with st.sidebar:
             label_visibility="collapsed"
         )
         st.session_state.has_specific_date = (has_date == "Yes, I have a test date")
-
         if st.session_state.has_specific_date:
             test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
         else:
@@ -272,10 +537,8 @@ with st.sidebar:
         st.session_state.exam_goal = exam_goal
         st.session_state.current_topic = current_topic
         st.session_state.test_date = test_date
-
         if current_topic not in st.session_state.threads:
             st.session_state.threads[current_topic] = []
-
         st.session_state.current_thread = current_topic
         st.toast(f"Switched to {current_topic}!")
         st.rerun()
@@ -297,7 +560,6 @@ with st.sidebar:
     elif st.session_state.last_study_date != today:
         st.session_state.study_streak = 1
         st.session_state.last_study_date = today
-
     st.markdown(f"<div class='streak-badge'>🔥 {st.session_state.study_streak} day streak</div>", unsafe_allow_html=True)
 
     st.divider()
@@ -330,63 +592,48 @@ with st.sidebar:
 
     st.divider()
 
-    # Pomodoro Timer
-    st.markdown("### ⏱️ Focus Timer")
-    pomo_cols = st.columns(2)
-    with pomo_cols[0]:
-        if st.button("▶️ 25m", use_container_width=True):
-            st.session_state.pomodoro_active = True
-            st.session_state.pomodoro_end = datetime.now() + timedelta(minutes=25)
-    with pomo_cols[1]:
-        if st.button("⏹️ Stop", use_container_width=True):
-            st.session_state.pomodoro_active = False
-            st.session_state.pomodoro_end = None
-
-    if st.session_state.pomodoro_active and st.session_state.pomodoro_end:
-        remaining = st.session_state.pomodoro_end - datetime.now()
-        if remaining.total_seconds() > 0:
-            mins, secs = divmod(int(remaining.total_seconds()), 60)
-            st.markdown(f"<h3 style='text-align: center; color: #FF6600;'>{mins:02d}:{secs:02d}</h3>", unsafe_allow_html=True)
-        else:
-            st.session_state.pomodoro_active = False
-            st.session_state.total_study_minutes += 25
-            st.balloons()
-            st.success("🎉 25 min done! Take a 5 min break.")
-
-    st.divider()
-
-    # Daily Challenge
+    # ============================================================
+    # DAILY CHALLENGE — AUTO GENERATED, AI POWERED
+    # ============================================================
     st.markdown("### 🎯 Daily Challenge")
 
     today = date.today()
 
-    if st.session_state.daily_challenge_date:
-        yesterday = today - timedelta(days=1)
-        last_challenge_date = st.session_state.daily_challenge_date
-        if last_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
-            if st.session_state.daily_challenge:
-                st.session_state.challenge_history.append({
-                    "date": str(yesterday),
-                    "subject": current_topic,
-                    "challenge": st.session_state.daily_challenge,
-                    "completed": False
-                })
-            st.session_state.challenge_streak = 0
-            st.session_state.daily_challenge = None
-            st.session_state.daily_challenge_date = None
-            st.session_state.daily_challenge_completed = False
-
+    # Reset if new day
     if st.session_state.daily_challenge_date != today:
         st.session_state.daily_challenge = None
         st.session_state.daily_challenge_completed = False
+        st.session_state.daily_challenge_subject = None
 
+    # Reset if subject changed
+    if st.session_state.daily_challenge_subject and st.session_state.daily_challenge_subject != current_topic:
+        st.session_state.daily_challenge = None
+        st.session_state.daily_challenge_completed = False
+        st.session_state.daily_challenge_subject = None
+
+    # Check missed yesterday
+    if st.session_state.daily_challenge_date:
+        yesterday = today - timedelta(days=1)
+        if st.session_state.daily_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
+            st.session_state.challenge_streak = 0
+
+    # Challenge streak badge
     if st.session_state.challenge_streak > 0:
         flame = "🔥" * min(st.session_state.challenge_streak, 5)
-        st.markdown(f"<div class='streak-badge'><span class='streak-flame'>{flame}</span> {st.session_state.challenge_streak} day challenge streak!</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='streak-badge'><span class='streak-flame'>{flame}</span> {st.session_state.challenge_streak} day streak!</div>", unsafe_allow_html=True)
 
+    # Auto-generate challenge on app open if not yet generated
+    if not st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
+        with st.spinner("📝 Generating today's challenge..."):
+            challenge_text = generate_daily_challenge(current_topic, exam_goal)
+            st.session_state.daily_challenge = challenge_text
+            st.session_state.daily_challenge_date = today
+            st.session_state.daily_challenge_subject = current_topic
+            st.session_state.daily_challenge_completed = False
+
+    # Display challenge
     if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-        st.markdown(f"<div class='challenge-box'><b>📋 Today's Challenge:</b><br>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
-
+        st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
         if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
             st.session_state.daily_challenge_completed = True
             st.session_state.last_challenge_completed_date = today
@@ -394,39 +641,16 @@ with st.sidebar:
             st.session_state.challenge_history.append({
                 "date": str(today),
                 "subject": current_topic,
-                "challenge": st.session_state.daily_challenge,
                 "completed": True
             })
             st.balloons()
-            st.toast("🎉 Challenge completed! Streak: " + str(st.session_state.challenge_streak))
+            st.toast(f"🎉 Challenge completed! Streak: {st.session_state.challenge_streak}")
             st.rerun()
 
-    elif st.session_state.daily_challenge and st.session_state.daily_challenge_completed:
-        st.markdown(f"<div class='challenge-complete'><b>✅ Completed!</b><br>{st.session_state.daily_challenge}<br><br>🎉 Great job! Come back tomorrow for a new challenge.</div>", unsafe_allow_html=True)
+    elif st.session_state.daily_challenge_completed:
+        st.markdown("<div class='challenge-complete'><b>✅ Today's challenge done!</b><br>🎉 Great job! Come back tomorrow for a new one.</div>", unsafe_allow_html=True)
 
-    else:
-        if st.button("🎯 Generate Today's Challenge", use_container_width=True):
-            import random
-            if st.session_state.weak_areas:
-                weakest_topic = sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[0][0]
-                challenge_types = [
-                    f"Revise and solve 3 questions from {weakest_topic}",
-                    f"Create a cheat sheet for {weakest_topic}",
-                    f"Explain {weakest_topic} to yourself out loud"
-                ]
-            else:
-                challenge_types = [
-                    f"Solve 5 MCQs from {current_topic}",
-                    f"Write a summary of one chapter from {current_topic}",
-                    f"Create 5 flashcards for {current_topic}",
-                    f"Solve 2 previous year questions from {current_topic}",
-                    f"Teach one concept from {current_topic} to a friend (or yourself)"
-                ]
-            st.session_state.daily_challenge = random.choice(challenge_types)
-            st.session_state.daily_challenge_date = today
-            st.session_state.daily_challenge_completed = False
-            st.rerun()
-
+    # Weekly summary
     if st.session_state.challenge_history:
         st.divider()
         st.markdown("### 📊 This Week")
@@ -441,224 +665,14 @@ with st.sidebar:
         st.session_state.threads[st.session_state.current_thread] = []
         st.session_state.awaiting_answer = False
         st.session_state.last_socratic_question = None
+        st.session_state.original_question = None
+        st.session_state.last_followup_label = None
+        st.session_state.last_followup_prompt = None
         st.rerun()
-
-# ============================================================
-# INTENT DETECTION
-# ============================================================
-
-def detect_intent(prompt: str) -> str:
-    prompt_lower = prompt.lower().strip()
-
-    direct_signals = [
-        "explain", "cheat sheet", "give me", "tell me", "what is",
-        "what are", "define", "formula for", "equation for",
-        "how does", "how do", "steps to", "method for",
-        "list of", "summary of", "overview of", "notes on",
-        "derive", "proof", "theorem", "law of", "principle of"
-    ]
-    if any(signal in prompt_lower for signal in direct_signals):
-        return "direct"
-
-    casual_signals = [
-        "hi", "hello", "hey", "what's up", "sup", "how are you",
-        "bored", "tired", "joke", "fun", "chat", "thanks", "thank you",
-        "bye", "goodbye", "see you", "good morning", "good night"
-    ]
-    if any(signal in prompt_lower for signal in casual_signals) and len(prompt_lower.split()) < 6:
-        return "casual"
-
-    struggle_signals = [
-        "hate", "difficult", "hard", "don't understand", "confused",
-        "stuck", "help me", "panic", "scared", "anxious", "worried",
-        "i can't", "i dont get", "no idea", "lost", "frustrated"
-    ]
-    if any(signal in prompt_lower for signal in struggle_signals):
-        return "empathetic"
-
-    return "socratic"
-
-# ============================================================
-# AI RESPONSE FUNCTION
-# ============================================================
-
-def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=None):
-    try:
-        provider = api_config["provider"]
-        model = api_config["model"]
-        days_left = (st.session_state.test_date - date.today()).days
-        crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
-
-        # Evaluate student's answer to a Socratic question
-        if msg_type == "evaluate_answer":
-            system_prompt = f"""You are FocusFlow, a warm and encouraging tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
-
-The AI previously asked this Socratic question:
-"{st.session_state.last_socratic_question}"
-
-The student answered: "{prompt}"
-
-IMPORTANT: The student may have typed just a single option letter like "A", "B", "C", or "D", or a short phrase.
-Match their answer against the options in the question above and evaluate accordingly.
-
-Your job:
-1. If CORRECT: Start with warm praise (e.g. "🎉 That's correct!"), then give the full clear explanation of the concept.
-2. If PARTIALLY CORRECT: Acknowledge what they got right, gently correct what's wrong, then explain the full concept.
-3. If INCORRECT: Be kind and encouraging — never say "wrong" bluntly. Say something like "Not quite, but great attempt! 💪", correct them gently, then explain the full concept clearly.
-
-Format your explanation with markdown. Keep it concise but complete.
-End with an encouraging line like "You're doing great, keep it up! 🚀"
-Do NOT ask another question at the end."""
-
-        elif msg_type == "casual":
-            system_prompt = f"""You are FocusFlow, a warm study buddy. The student said: "{prompt}"
-Respond conversationally and warmly. If it's a greeting, greet back and briefly mention you're ready to help with {st.session_state.current_topic}.
-Keep under 3 sentences. Be encouraging. No study pressure right now."""
-
-        elif msg_type == "empathetic":
-            system_prompt = f"""The student is struggling emotionally with studying. They said: "{prompt}"
-Be deeply empathetic. Acknowledge their feelings genuinely. Share ONE quick motivational tip or breathing technique.
-Then gently suggest ONE tiny, manageable next step related to {st.session_state.current_topic}.
-Keep it warm, not robotic. Like a caring older sibling, not a teacher."""
-
-        elif msg_type == "direct" or crunch_mode:
-            system_prompt = f"""You are an expert {st.session_state.exam_goal} tutor. The student asked: "{prompt}"
-Provide a CLEAR, STRUCTURED cheat sheet / explanation.
-Format with markdown:
-## 📋 [Topic Name]
-### 🔑 Core Concept
-(2-3 sentences)
-### 🧮 Key Formula / Steps
-- Point 1
-- Point 2
-### ⚠️ Common Mistake
-(What students usually get wrong)
-### 💡 Quick Example
-(One solved example)
-Context: {st.session_state.exam_goal}, Subject: {st.session_state.current_topic}"""
-
-        else:
-            system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
-The student asked: "{prompt}"
-
-Your job: Ask ONE specific diagnostic question to check their understanding.
-Rules:
-- Must relate directly to their question
-- Make it multiple choice (A, B, C, D) OR a short numerical answer
-- Do NOT give the answer or explanation yet
-- End with: "Take your time! If you're stuck, click the ⚡ button below 👇"
-- Keep under 5 lines total
-
-Example:
-"Quick check before I explain: In which organelle does photosynthesis occur?
-A) Mitochondria  B) Chloroplast  C) Nucleus  D) Ribosome
-
-Take your time! If you're stuck, click the ⚡ button below 👇"
-"""
-
-        if provider == "groq":
-            messages = [{"role": "system", "content": system_prompt}]
-            messages.append({"role": "user", "content": prompt})
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 1000
-            }
-            headers = {
-                "Authorization": f"Bearer {api_config['key']}",
-                "Content-Type": "application/json"
-            }
-            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
-            if 'choices' in response and response['choices']:
-                return response['choices'][0]['message']['content'], msg_type
-            else:
-                error = response.get('error', {}).get('message', 'Unknown error')
-                return f"⚠️ Groq Error: {error}", "error"
-
-        elif provider == "openrouter":
-            messages = [{"role": "system", "content": system_prompt}]
-            messages.append({"role": "user", "content": prompt})
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 1000
-            }
-            headers = {
-                "Authorization": f"Bearer {api_config['key']}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://focusflow.app",
-                "X-Title": "FocusFlow"
-            }
-            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
-            if 'choices' in response and response['choices']:
-                return response['choices'][0]['message']['content'], msg_type
-            else:
-                error = response.get('error', {}).get('message', 'Unknown error')
-                return f"⚠️ OpenRouter Error: {error}", "error"
-
-        else:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
-            content_parts = [{"text": system_prompt + "\n\nUser: " + prompt}]
-            payload = {
-                "contents": [{"parts": content_parts}],
-                "generationConfig": {
-                    "temperature": 0.7,
-                    "maxOutputTokens": 1000
-                }
-            }
-            response = requests.post(url, json=payload, timeout=30).json()
-            if 'candidates' in response and response['candidates']:
-                return response['candidates'][0]['content']['parts'][0]['text'], msg_type
-            else:
-                error = response.get('error', {}).get('message', 'Unknown API error')
-                return f"⚠️ Google Error: {error}", "error"
-
-    except requests.exceptions.RequestException as e:
-        return f"🌐 Connection error: {str(e)}", "error"
-    except Exception as e:
-        return f"❌ Error: {str(e)}", "error"
-
-# ============================================================
-# SUBJECT-SPECIFIC WELCOME CONTENT
-# ============================================================
-
-SUBJECT_CONTENT = {
-    "Physics": {
-        "example_concept": "Explain Newton's Laws of Motion",
-        "example_question": "What is Newton's First Law?"
-    },
-    "Chemistry": {
-        "example_concept": "Explain balancing chemical equations",
-        "example_question": "How do I balance chemical equations?"
-    },
-    "Maths": {
-        "example_concept": "Explain quadratic equations",
-        "example_question": "How do I solve quadratic equations?"
-    },
-    "Biology": {
-        "example_concept": "Explain Photosynthesis",
-        "example_question": "What is photosynthesis?"
-    },
-    "English": {
-        "example_concept": "Explain the theme of 'The Road Not Taken'",
-        "example_question": "What is the theme of 'The Road Not Taken'?"
-    },
-    "History": {
-        "example_concept": "Explain the causes of World War I",
-        "example_question": "What were the main causes of World War I?"
-    },
-    "Other": {
-        "example_concept": "Explain the Pythagorean Theorem",
-        "example_question": "What is the Pythagorean Theorem?"
-    }
-}
 
 # ============================================================
 # DISPLAY CHAT
 # ============================================================
-
 current_messages = st.session_state.threads[st.session_state.current_thread]
 days_left = (st.session_state.test_date - date.today()).days
 
@@ -682,13 +696,11 @@ I can help you:
 
 **Try asking: "{subject_data['example_question']}"**"""
 
-    current_messages.append({
-        "role": "assistant",
-        "content": welcome,
-        "msg_type": "welcome"
-    })
+    current_messages.append({"role": "assistant", "content": welcome, "msg_type": "welcome"})
 
 for i, message in enumerate(current_messages):
+    if message.get("hidden"):
+        continue
     with st.chat_message(message["role"]):
         msg_type = message.get("msg_type", "default")
         if msg_type == "welcome":
@@ -707,11 +719,10 @@ for i, message in enumerate(current_messages):
         if message["role"] == "assistant" and "subject" in message:
             st.markdown(f"<span class='subject-pill'>📚 {message['subject']}</span>", unsafe_allow_html=True)
 
-        # "STUCK?" BUTTON — only on unresolved Socratic messages
+        # STUCK button for unresolved Socratic questions
         if (message["role"] == "assistant" and
             message.get("msg_type") == "socratic" and
             not message.get("resolved", False)):
-
             if st.button("⚡ Stuck? Get the cheat sheet", key=f"stuck_btn_{st.session_state.current_thread}_{i}"):
                 message["resolved"] = True
                 st.session_state.awaiting_answer = False
@@ -720,27 +731,50 @@ for i, message in enumerate(current_messages):
                 weak_key = f"{st.session_state.current_topic}: {message.get('topic', 'General')}"
                 st.session_state.weak_areas[weak_key] = st.session_state.weak_areas.get(weak_key, 0) + 1
 
-                trigger_prompt = f"[SYSTEM: Student clicked 'Stuck' on Socratic question about: {message.get('topic', 'topic')}. Provide direct, structured cheat sheet with: 1) Core concept 2) Key formula/steps 3) Common mistake 4) Quick example. Be concise.]"
-
-                current_messages.append({
-                    "role": "user",
-                    "content": trigger_prompt,
-                    "hidden": True,
-                    "msg_type": "system_trigger"
-                })
+                trigger_prompt = f"[SYSTEM: Student clicked 'Stuck'. Provide direct cheat sheet for: {message.get('topic', 'topic')}]"
+                current_messages.append({"role": "user", "content": trigger_prompt, "hidden": True, "msg_type": "system_trigger"})
 
                 with st.chat_message("assistant"):
-                    with st.spinner('Generating cheat sheet...'):
-                        answer, _ = get_ai_response(trigger_prompt, "direct", message.get('topic', 'General'))
+                    with st.spinner("Generating cheat sheet..."):
+                        answer, _ = get_ai_response(trigger_prompt, "direct", message.get("topic", "General"))
                         current_messages.append({
                             "role": "assistant",
                             "content": answer,
                             "msg_type": "cheat_sheet",
-                            "topic": message.get('topic', 'General'),
+                            "topic": message.get("topic", "General"),
                             "subject": st.session_state.current_topic,
                             "resolved": True
                         })
                 st.rerun()
+
+        # SMART FOLLOW-UP BUTTON — on last assistant message only
+        is_last = (i == len(current_messages) - 1)
+        if (message["role"] == "assistant" and
+            is_last and
+            msg_type not in ("welcome", "socratic", "stats") and
+            st.session_state.last_followup_label):
+            st.markdown("<div class='followup-btn'>", unsafe_allow_html=True)
+            if st.button(st.session_state.last_followup_label, key=f"followup_{i}"):
+                followup_prompt = st.session_state.last_followup_prompt
+                st.session_state.last_followup_label = None
+                st.session_state.last_followup_prompt = None
+                current_messages.append({"role": "user", "content": followup_prompt, "msg_type": "user_question"})
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        answer, msg_type_r = get_ai_response(followup_prompt, "direct", followup_prompt[:40])
+                        current_messages.append({
+                            "role": "assistant",
+                            "content": answer,
+                            "msg_type": msg_type_r,
+                            "subject": st.session_state.current_topic,
+                            "resolved": True
+                        })
+                        # Generate next follow-up label
+                        label, prompt_suggestion = generate_followup(answer, st.session_state.current_topic)
+                        st.session_state.last_followup_label = label
+                        st.session_state.last_followup_prompt = prompt_suggestion
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
 # IMAGE UPLOAD
@@ -753,19 +787,13 @@ with st.expander("📎 Attach Image (Optional)"):
 # ============================================================
 # PROCESS PENDING AI REQUESTS
 # ============================================================
-
 if st.session_state.pending_ai_request:
     request = st.session_state.pending_ai_request
     st.session_state.pending_ai_request = None
 
     with st.chat_message("assistant"):
-        with st.spinner('Thinking...'):
-            answer, msg_type = get_ai_response(
-                request["prompt"],
-                request["msg_type"],
-                request["topic"],
-                uploaded_image if request.get("has_image") else None
-            )
+        with st.spinner("Thinking..."):
+            answer, msg_type = get_ai_response(request["prompt"], request["msg_type"], request["topic"])
             current_messages.append({
                 "role": "assistant",
                 "content": answer,
@@ -774,16 +802,18 @@ if st.session_state.pending_ai_request:
                 "subject": st.session_state.current_topic,
                 "resolved": True if msg_type != "socratic" else False
             })
-            # If this pending request resulted in a Socratic question, set awaiting state
             if msg_type == "socratic":
                 st.session_state.awaiting_answer = True
                 st.session_state.last_socratic_question = answer
+            else:
+                label, prompt_suggestion = generate_followup(answer, st.session_state.current_topic)
+                st.session_state.last_followup_label = label
+                st.session_state.last_followup_prompt = prompt_suggestion
     st.rerun()
 
 # ============================================================
 # CHAT INPUT
 # ============================================================
-
 if prompt := st.chat_input("Ask a question..."):
 
     today = date.today()
@@ -791,21 +821,19 @@ if prompt := st.chat_input("Ask a question..."):
         st.session_state.study_streak += 1
         st.session_state.last_study_date = today
 
-    current_messages.append({
-        "role": "user",
-        "content": prompt,
-        "msg_type": "user_question"
-    })
+    current_messages.append({"role": "user", "content": prompt, "msg_type": "user_question"})
 
-    # KEY FIX: check awaiting_answer BEFORE doing anything else
+    # Pin original question if this is the first user message in the thread
+    user_msgs = [m for m in current_messages if m["role"] == "user" and not m.get("hidden")]
+    if len(user_msgs) == 1:
+        st.session_state.original_question = prompt
+
+    # Check if awaiting answer to Socratic question
     if st.session_state.awaiting_answer and st.session_state.last_socratic_question:
         intent = "evaluate_answer"
         topic_tag = st.session_state.last_socratic_question[:40]
-        # Reset awaiting state immediately
         st.session_state.awaiting_answer = False
-        saved_question = st.session_state.last_socratic_question
         st.session_state.last_socratic_question = None
-        # Mark previous socratic message as resolved
         for msg in reversed(current_messages):
             if msg.get("msg_type") == "socratic" and not msg.get("resolved", False):
                 msg["resolved"] = True
@@ -813,16 +841,21 @@ if prompt := st.chat_input("Ask a question..."):
     else:
         intent = detect_intent(prompt)
         topic_tag = prompt[:40]
-        saved_question = None
 
     with st.chat_message("assistant"):
-        with st.spinner('Thinking...'):
-            answer, msg_type = get_ai_response(prompt, intent, topic_tag, uploaded_image)
+        with st.spinner("Thinking..."):
+            answer, msg_type = get_ai_response(prompt, intent, topic_tag)
 
-            # If AI just asked a new Socratic question, set awaiting state
             if msg_type == "socratic":
                 st.session_state.awaiting_answer = True
                 st.session_state.last_socratic_question = answer
+                st.session_state.last_followup_label = None
+                st.session_state.last_followup_prompt = None
+            else:
+                # Generate smart follow-up button label
+                label, prompt_suggestion = generate_followup(answer, st.session_state.current_topic)
+                st.session_state.last_followup_label = label
+                st.session_state.last_followup_prompt = prompt_suggestion
 
             current_messages.append({
                 "role": "assistant",
@@ -845,10 +878,8 @@ with qa_col1:
         cheat_prompt = f"Give me a comprehensive cheat sheet for {st.session_state.current_topic} ({st.session_state.exam_goal})"
         current_messages.append({"role": "user", "content": cheat_prompt, "msg_type": "user_question"})
         st.session_state.pending_ai_request = {
-            "prompt": cheat_prompt,
-            "msg_type": "direct",
-            "topic": f"{st.session_state.current_topic} Cheat Sheet",
-            "has_image": False
+            "prompt": cheat_prompt, "msg_type": "direct",
+            "topic": f"{st.session_state.current_topic} Cheat Sheet", "has_image": False
         }
         st.rerun()
 
@@ -857,10 +888,8 @@ with qa_col2:
         mock_prompt = f"Generate 5 practice questions for {st.session_state.current_topic} ({st.session_state.exam_goal}) with answers and explanations"
         current_messages.append({"role": "user", "content": mock_prompt, "msg_type": "user_question"})
         st.session_state.pending_ai_request = {
-            "prompt": mock_prompt,
-            "msg_type": "direct",
-            "topic": f"{st.session_state.current_topic} Mock Test",
-            "has_image": False
+            "prompt": mock_prompt, "msg_type": "direct",
+            "topic": f"{st.session_state.current_topic} Mock Test", "has_image": False
         }
         st.rerun()
 
@@ -889,9 +918,7 @@ with qa_col4:
                 chat_text.append(f"{prefix}:\n{msg['content']}")
         export_text = f"FocusFlow Chat Export\n{'='*50}\nExam: {st.session_state.exam_goal}\nSubject: {st.session_state.current_topic}\nDate: {date.today()}\n{'='*50}\n\n" + "\n\n---\n\n".join(chat_text)
         st.download_button(
-            "📥 Download Chat",
-            export_text,
+            "📥 Download Chat", export_text,
             file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt",
-            mime="text/plain",
-            use_container_width=True
+            mime="text/plain", use_container_width=True
         )
