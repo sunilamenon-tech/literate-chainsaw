@@ -213,8 +213,8 @@ defaults = {
     "last_challenge_completed_date": None,
     "challenge_history": [],
     "pending_ai_request": None,
-    "awaiting_answer": False,       # NEW: True when AI just asked a Socratic question
-    "last_socratic_question": None, # NEW: stores the question that was asked
+    "awaiting_answer": False,
+    "last_socratic_question": None,
 }
 
 for key, value in defaults.items():
@@ -489,7 +489,7 @@ def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=N
         days_left = (st.session_state.test_date - date.today()).days
         crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
 
-        # ── NEW: evaluate student's answer to a Socratic question ──
+        # Evaluate student's answer to a Socratic question
         if msg_type == "evaluate_answer":
             system_prompt = f"""You are FocusFlow, a warm and encouraging tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
 
@@ -498,15 +498,17 @@ The AI previously asked this Socratic question:
 
 The student answered: "{prompt}"
 
+IMPORTANT: The student may have typed just a single option letter like "A", "B", "C", or "D", or a short phrase.
+Match their answer against the options in the question above and evaluate accordingly.
+
 Your job:
-1. Judge if the answer is correct, partially correct, or incorrect.
-2. If CORRECT: Praise them warmly (1 sentence), then give the full clear explanation of the concept.
-3. If PARTIALLY CORRECT: Acknowledge what they got right, gently correct what's wrong, then explain the full concept.
-4. If INCORRECT: Be kind and encouraging (never say "wrong" bluntly), correct them gently, then explain the full concept clearly.
+1. If CORRECT: Start with warm praise (e.g. "🎉 That's correct!"), then give the full clear explanation of the concept.
+2. If PARTIALLY CORRECT: Acknowledge what they got right, gently correct what's wrong, then explain the full concept.
+3. If INCORRECT: Be kind and encouraging — never say "wrong" bluntly. Say something like "Not quite, but great attempt! 💪", correct them gently, then explain the full concept clearly.
 
 Format your explanation with markdown. Keep it concise but complete.
 End with an encouraging line like "You're doing great, keep it up! 🚀"
-"""
+Do NOT ask another question at the end."""
 
         elif msg_type == "casual":
             system_prompt = f"""You are FocusFlow, a warm study buddy. The student said: "{prompt}"
@@ -772,6 +774,10 @@ if st.session_state.pending_ai_request:
                 "subject": st.session_state.current_topic,
                 "resolved": True if msg_type != "socratic" else False
             })
+            # If this pending request resulted in a Socratic question, set awaiting state
+            if msg_type == "socratic":
+                st.session_state.awaiting_answer = True
+                st.session_state.last_socratic_question = answer
     st.rerun()
 
 # ============================================================
@@ -791,12 +797,13 @@ if prompt := st.chat_input("Ask a question..."):
         "msg_type": "user_question"
     })
 
-    # ── NEW LOGIC: if AI was waiting for an answer, evaluate it ──
+    # KEY FIX: check awaiting_answer BEFORE doing anything else
     if st.session_state.awaiting_answer and st.session_state.last_socratic_question:
         intent = "evaluate_answer"
         topic_tag = st.session_state.last_socratic_question[:40]
-        # Reset awaiting state
+        # Reset awaiting state immediately
         st.session_state.awaiting_answer = False
+        saved_question = st.session_state.last_socratic_question
         st.session_state.last_socratic_question = None
         # Mark previous socratic message as resolved
         for msg in reversed(current_messages):
@@ -806,12 +813,13 @@ if prompt := st.chat_input("Ask a question..."):
     else:
         intent = detect_intent(prompt)
         topic_tag = prompt[:40]
+        saved_question = None
 
     with st.chat_message("assistant"):
         with st.spinner('Thinking...'):
             answer, msg_type = get_ai_response(prompt, intent, topic_tag, uploaded_image)
 
-            # If AI just asked a Socratic question, set awaiting state
+            # If AI just asked a new Socratic question, set awaiting state
             if msg_type == "socratic":
                 st.session_state.awaiting_answer = True
                 st.session_state.last_socratic_question = answer
@@ -819,10 +827,10 @@ if prompt := st.chat_input("Ask a question..."):
             current_messages.append({
                 "role": "assistant",
                 "content": answer,
-                "msg_type": msg_type,
+                "msg_type": "evaluate_answer" if intent == "evaluate_answer" else msg_type,
                 "topic": topic_tag,
                 "subject": st.session_state.current_topic,
-                "resolved": False if msg_type == "socratic" else True
+                "resolved": True
             })
     st.rerun()
 
