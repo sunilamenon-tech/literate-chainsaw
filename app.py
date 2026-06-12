@@ -50,14 +50,21 @@ st.markdown("""
     }
 
     /* ── CHAT INPUT ── */
-    .stChatInput textarea {
-        background: #1a1a1a !important;
-        border: 1px solid #333 !important;
-        border-radius: 24px !important;
-        color: #e0e0e0 !important;
-        font-size: 14px !important;
-    }
-    .stChatInput textarea::placeholder { color: #555 !important; }
+   [data-testid="stChatInput"] {
+    background-color: #1a1a1a !important;
+    border: 1px solid #333 !important;
+    border-radius: 24px !important;
+}
+
+[data-testid="stChatInput"] textarea {
+    background: transparent !important;
+    color: #e0e0e0 !important;
+    font-size: 14px !important;
+}
+
+[data-testid="stChatInput"] textarea::placeholder {
+    color: #777 !important;
+}
 
     /* ── SELECTBOX & INPUTS ── */
     .stSelectbox > div > div {
@@ -272,7 +279,12 @@ api_config = None
 try:
     key = st.secrets["GROQ_API_KEY"]
     if key and len(key) > 10:
-        api_config = {"provider": "groq", "key": key, "model": "llama-3.1-8b-instant", "url": "https://api.groq.com/openai/v1/chat/completions"}
+        api_config = {
+    "provider": "groq",
+    "key": key,
+    "model": "llama-3.3-70b-versatile",
+    "url": "https://api.groq.com/openai/v1/chat/completions"
+}
 except: pass
 
 if not api_config:
@@ -452,12 +464,61 @@ Label rules: start with emoji, max 6 words, helpful and natural."""
 # ============================================================
 def detect_intent(prompt: str) -> str:
     p = prompt.lower().strip()
-    if any(s in p for s in ["explain", "cheat sheet", "give me", "tell me", "what is", "what are", "define", "formula", "how does", "how do", "steps", "derive", "proof", "theorem", "law of", "principle"]):
+
+    if any(s in p for s in [
+        "explain",
+        "cheat sheet",
+        "give me",
+        "tell me",
+        "what is",
+        "what are",
+        "define",
+        "formula",
+        "how does",
+        "how do",
+        "steps",
+        "derive",
+        "proof",
+        "theorem",
+        "law of",
+        "principle"
+    ]):
         return "direct"
-    if any(s in p for s in ["hi", "hello", "hey", "thanks", "thank you", "bye", "good morning", "good night"]) and len(p.split()) < 6:
+
+    if any(s in p for s in [
+        "hi",
+        "hello",
+        "hey",
+        "thanks",
+        "thank you",
+        "bye",
+        "good morning",
+        "good night"
+    ]) and len(p.split()) < 6:
         return "casual"
-    if any(s in p for s in ["hate", "difficult", "hard", "don't understand", "confused", "stuck", "panic", "scared", "anxious", "i can't", "lost", "frustrated"]):
+
+    if any(s in p for s in [
+        "panic",
+        "scared",
+        "anxious",
+        "stressed",
+        "overwhelmed",
+        "frustrated"
+    ]):
         return "empathetic"
+
+    if any(s in p for s in [
+        "confused",
+        "don't understand",
+        "dont understand",
+        "stuck",
+        "not clear",
+        "help me understand",
+        "i can't understand",
+        "i cant understand"
+    ]):
+        return "socratic"
+
     return "socratic"
 
 # ============================================================
@@ -521,15 +582,40 @@ Give a CLEAR STRUCTURED explanation with markdown:
 ### 💡 Quick Example"""
 
     else:
-        system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
-Ask ONE diagnostic question to check understanding.
-- Multiple choice (A B C D) or short numerical
-- Do NOT give the answer yet
-- End with: "Take your time! If you're stuck, click the ⚡ button below 👇"
-- Keep under 5 lines"""
+        system_prompt = f"""
+You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
 
-    history.append({"role": "user", "content": prompt})
-    return call_api(history, system_prompt), msg_type
+The student has asked:
+"{prompt}"
+
+Your job is NOT to explain immediately.
+
+First identify what concept the student is struggling with.
+
+Then ask ONE diagnostic question to discover what the student already knows.
+
+Rules:
+- Ask only ONE question.
+- Prefer MCQ format (A/B/C/D).
+- Keep it beginner friendly.
+- Do NOT explain the answer yet.
+- Wait for the student's response.
+
+Example:
+
+Student: "I am confused about photosynthesis"
+
+AI:
+Before we dive in, what do you already know about photosynthesis?
+
+A) Plants make their own food
+B) Plants absorb oxygen to make food
+C) Plants produce food from soil
+D) Not sure
+
+End with:
+"Take your time! If you're stuck, click the ⚡ button below 👇"
+"""
 
 # ============================================================
 # WELCOME CONTENT
