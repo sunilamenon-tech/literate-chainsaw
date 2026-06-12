@@ -1,8 +1,7 @@
 import streamlit as st
 import requests
 from datetime import date, datetime, timedelta
-import random
-import json
+import base64
 
 # ============================================================
 # PAGE CONFIG
@@ -11,254 +10,115 @@ st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="centered")
 
 st.markdown("""
 <style>
-    /* ── DARK THEME BASE ── */
-    .stApp { background-color: #0F0F0F !important; color: #e0e0e0; }
-    section[data-testid="stSidebar"] { background-color: #161616 !important; border-right: 1px solid #2a2a2a; }
-    .stChatMessage { background: transparent !important; }
-
-    /* ── TYPOGRAPHY ── */
-    * { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
-    h1 { font-size: 22px !important; font-weight: 700 !important; color: #FF6600 !important; letter-spacing: -0.3px; }
-
-    /* ── BUTTONS ── */
-    .stButton>button {
-        background-color: #FF6600 !important;
-        color: white !important;
-        border-radius: 24px !important;
-        font-weight: 600 !important;
-        border: none !important;
-        font-size: 13px !important;
-        padding: 8px 18px !important;
-        transition: background 0.2s;
-    }
-    .stButton>button:hover { background-color: #e55a00 !important; }
-
-    /* ── CHAT BUBBLES ── */
-    [data-testid="stChatMessageContent"] {
-        background: #1a1a1a !important;
-        border: 1px solid #2a2a2a !important;
-        border-radius: 0 14px 14px 14px !important;
-        color: #e0e0e0 !important;
-        font-size: 14px !important;
-        line-height: 1.6 !important;
-    }
-    [data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"] {
-        background: #FF6600 !important;
-        border: none !important;
-        border-radius: 14px 0 14px 14px !important;
-        color: white !important;
-    }
-
-    /* ── CHAT INPUT ── */
-    .stChatInput textarea {
-        background: #1a1a1a !important;
-        border: 1px solid #333 !important;
-        border-radius: 24px !important;
-        color: #e0e0e0 !important;
-        font-size: 14px !important;
-    }
-    .stChatInput textarea::placeholder { color: #555 !important; }
-
-    /* ── SELECTBOX & INPUTS ── */
-    .stSelectbox > div > div {
-        background: #1e1e1e !important;
-        border: 1px solid #333 !important;
-        border-radius: 10px !important;
-        color: #e0e0e0 !important;
-    }
-    .stDateInput > div > div {
-        background: #1e1e1e !important;
-        border: 1px solid #333 !important;
-        border-radius: 10px !important;
-        color: #e0e0e0 !important;
-    }
-
-    /* ── DIVIDER ── */
-    hr { border-color: #2a2a2a !important; }
-
-    /* ── SIDEBAR TEXT ── */
-    .stSidebar p, .stSidebar label, .stSidebar .stMarkdown { color: #ccc !important; }
-    .stSidebar h1, .stSidebar h2, .stSidebar h3 { color: #FF6600 !important; }
-
-    /* ── MESSAGE BOXES ── */
+    .stApp {background-color: #FFF9E6;}
+    .stButton>button {background-color: #FF6600; color: white; border-radius: 20px; font-weight: 600;}
+    .stChatMessage {border-radius: 15px;}
     .cheat-sheet-box {
-        background: #1e1a10;
+        background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
         border-left: 4px solid #FF6600;
         padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        border-radius: 12px;
+        margin: 8px 0;
     }
     .socratic-box {
-        background: #0f1e12;
+        background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
         border-left: 4px solid #4CAF50;
         padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        border-radius: 12px;
+        margin: 8px 0;
     }
     .welcome-box {
-        background: #0e1520;
+        background: linear-gradient(135deg, #E3F2FD, #BBDEFB);
         border-left: 4px solid #2196F3;
         padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        border-radius: 12px;
+        margin: 8px 0;
     }
     .stats-box {
-        background: #160e1e;
+        background: linear-gradient(135deg, #F3E5F5, #E1BEE7);
         border-left: 4px solid #9C27B0;
         padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        border-radius: 12px;
+        margin: 8px 0;
     }
-    .error-box {
-        background: #1e0e0e;
-        border-left: 4px solid #C62828;
-        padding: 12px;
-        border-radius: 8px;
-        color: #ff8a8a;
-        font-size: 14px;
-    }
-    .evaluate-correct-box {
-        background: #0a1f0a;
-        border-left: 4px solid #4CAF50;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
-    }
-    .evaluate-wrong-box {
-        background: #1a1000;
-        border-left: 4px solid #FF9800;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
-    }
-
-    /* ── BADGES ── */
     .streak-badge {
-        background: linear-gradient(90deg, #FF6600, #FF9900);
+        background: linear-gradient(45deg, #FF6600, #FF9900);
         color: white;
-        padding: 8px 14px;
+        padding: 8px 16px;
         border-radius: 20px;
         text-align: center;
-        font-weight: 700;
-        font-size: 13px;
-        margin: 6px 0;
+        font-weight: bold;
+        margin: 8px 0;
     }
     .weak-area-tag {
         display: inline-block;
-        background: #1e1010;
-        color: #ff8a8a;
-        border: 1px solid #3a1a1a;
-        padding: 3px 10px;
+        background-color: #FFEBEE;
+        color: #C62828;
+        padding: 4px 10px;
         border-radius: 12px;
-        font-size: 11px;
+        font-size: 12px;
         margin: 2px;
     }
     .subject-pill {
         display: inline-block;
-        background: #1e1510;
-        color: #FF9900;
-        border: 1px solid #3a2a10;
-        padding: 3px 12px;
+        background-color: #FFE4CC;
+        color: #FF6600;
+        padding: 4px 12px;
         border-radius: 12px;
         font-size: 11px;
         margin-top: 4px;
     }
-    .challenge-box {
-        background: #1a1600;
-        border: 1px solid #3a3000;
-        border-left: 4px solid #FFC107;
-        padding: 14px;
-        border-radius: 0 12px 12px 12px;
-        margin: 6px 0;
-        color: #e0e0e0;
-        font-size: 12px;
-        line-height: 1.6;
-    }
-    .challenge-complete {
-        background: #0a1f0a;
-        border-left: 4px solid #4CAF50;
-        padding: 14px;
-        border-radius: 12px;
-        margin: 6px 0;
-        color: #aaffaa;
-        font-size: 12px;
+    .error-box {
+        background-color: #FFEBEE;
+        border-left: 4px solid #C62828;
+        padding: 12px;
+        border-radius: 8px;
+        color: #C62828;
     }
     .setup-box {
-        background: #1e1510;
+        background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
         border: 2px solid #FF6600;
-        padding: 20px;
+        padding: 24px;
         border-radius: 16px;
-        margin: 16px 0;
-        color: #e0e0e0;
+        margin: 20px 0;
     }
     .setup-step {
-        background: #1a1a1a;
-        padding: 10px 14px;
-        border-radius: 8px;
-        margin: 6px 0;
-        border-left: 3px solid #FF6600;
-        font-size: 13px;
-        color: #ccc;
-    }
-
-    /* ── FOLLOW-UP BUTTON ── */
-    .followup-btn button {
-        background: transparent !important;
-        border: 1px solid #2196F3 !important;
-        color: #2196F3 !important;
-        border-radius: 20px !important;
-        font-size: 12px !important;
-        padding: 4px 14px !important;
-        margin-top: 6px !important;
-    }
-    .followup-btn button:hover { background: #0d2a3a !important; }
-
-    /* ── CLAP CELEBRATION ── */
-    .clap-banner {
-        background: linear-gradient(90deg, #0a1f0a, #0f2e0f);
-        border: 1px solid #4CAF50;
-        border-radius: 12px;
+        background: white;
         padding: 12px 16px;
-        text-align: center;
-        font-size: 20px;
+        border-radius: 8px;
         margin: 8px 0;
-        animation: fadeInOut 3s ease-in-out forwards;
+        border-left: 3px solid #FF6600;
     }
-    @keyframes fadeInOut {
-        0% { opacity: 0; transform: scale(0.95); }
-        20% { opacity: 1; transform: scale(1.02); }
-        80% { opacity: 1; }
-        100% { opacity: 0; }
+    .challenge-box {
+        background: linear-gradient(135deg, #FFF8E1, #FFECB3);
+        border-left: 4px solid #FFC107;
+        padding: 16px;
+        border-radius: 12px;
+        margin: 8px 0;
     }
-
-    /* ── INFO / WARNING / ERROR NATIVE ── */
-    .stAlert { border-radius: 10px !important; }
-
-    /* ── EXPANDER ── */
-    .stExpander { background: #1a1a1a !important; border: 1px solid #2a2a2a !important; border-radius: 10px !important; }
-
-    /* ── METRICS ── */
-    [data-testid="stMetric"] { background: #1a1a1a; border-radius: 10px; padding: 10px; border: 1px solid #2a2a2a; }
-    [data-testid="stMetricLabel"] { color: #888 !important; font-size: 12px !important; }
-    [data-testid="stMetricValue"] { color: #FF6600 !important; font-size: 20px !important; font-weight: 700 !important; }
+    .challenge-complete {
+        background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
+        border-left: 4px solid #4CAF50;
+        padding: 16px;
+        border-radius: 12px;
+        margin: 8px 0;
+    }
+    .challenge-missed {
+        background: linear-gradient(135deg, #FFEBEE, #FFCDD2);
+        border-left: 4px solid #C62828;
+        padding: 16px;
+        border-radius: 12px;
+        margin: 8px 0;
+    }
+    .streak-flame {
+        font-size: 24px;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -272,26 +132,60 @@ api_config = None
 try:
     key = st.secrets["GROQ_API_KEY"]
     if key and len(key) > 10:
-        api_config = {"provider": "groq", "key": key, "model": "llama-3.1-8b-instant", "url": "https://api.groq.com/openai/v1/chat/completions"}
-except: pass
+        api_config = {
+            "provider": "groq",
+            "key": key,
+            "model": "llama-3.1-8b-instant",
+            "url": "https://api.groq.com/openai/v1/chat/completions"
+        }
+except:
+    pass
 
 if not api_config:
     try:
         key = st.secrets["OPENROUTER_API_KEY"]
         if key and len(key) > 10:
-            api_config = {"provider": "openrouter", "key": key, "model": "meta-llama/llama-3.2-3b-instruct:free", "url": "https://openrouter.ai/api/v1/chat/completions"}
-    except: pass
+            api_config = {
+                "provider": "openrouter",
+                "key": key,
+                "model": "meta-llama/llama-3.2-3b-instruct:free",
+                "url": "https://openrouter.ai/api/v1/chat/completions"
+            }
+    except:
+        pass
 
 if not api_config:
     try:
         key = st.secrets["GOOGLE_API_KEY"]
         if key and len(key) > 10:
-            api_config = {"provider": "google", "key": key, "model": "gemini-1.5-pro", "url": None}
-    except: pass
+            api_config = {
+                "provider": "google",
+                "key": key,
+                "model": "gemini-1.5-pro",
+                "url": None
+            }
+    except:
+        pass
 
 if not api_config:
-    st.markdown("<div class='setup-box'><h2>🔧 Setup Required</h2><p>Add any ONE of these API keys to your Streamlit secrets:</p></div>", unsafe_allow_html=True)
-    st.markdown("<div class='setup-step'><b>Groq (Free):</b> <a href='https://console.groq.com/keys' target='_blank'>console.groq.com/keys</a><br>Add: <code>GROQ_API_KEY = \"gsk_your-key\"</code></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='setup-box'>
+        <h2>🔧 Setup Required</h2>
+        <p>Add any ONE of these API keys to your Streamlit secrets:</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### Option 1: Groq ⭐ (Recommended)")
+    st.markdown("""
+    <div class='setup-step'>
+        <b>Step 1:</b> Go to <a href='https://console.groq.com/keys' target='_blank'>console.groq.com/keys</a><br>
+        <b>Step 2:</b> Sign up with Google/GitHub<br>
+        <b>Step 3:</b> Create API Key (starts with <code>gsk_</code>)<br>
+        <b>Step 4:</b> Add to Streamlit Secrets:<br>
+        <code>GROQ_API_KEY = "gsk_your-key"</code>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.error("⛔ No valid API key found.")
     st.stop()
 
@@ -299,6 +193,7 @@ if not api_config:
 # SESSION STATE
 # ============================================================
 defaults = {
+    "messages": [],
     "threads": {"General": []},
     "current_thread": "General",
     "exam_goal": "JEE Main",
@@ -309,286 +204,91 @@ defaults = {
     "last_study_date": None,
     "weak_areas": {},
     "total_study_minutes": 0,
+    "pomodoro_active": False,
+    "pomodoro_end": None,
+    # ENHANCED DAILY CHALLENGE STATE
     "daily_challenge": None,
     "daily_challenge_date": None,
     "daily_challenge_completed": False,
-    "daily_challenge_subject": None,
     "challenge_streak": 0,
     "last_challenge_completed_date": None,
-    "challenge_history": [],
+    "challenge_history": [],  # List of {date, subject, challenge_text, completed}
     "pending_ai_request": None,
-    "awaiting_answer": False,
-    "last_socratic_question": None,
-    "original_question": None,
-    "last_followup_label": None,
-    "last_followup_prompt": None,
-    "show_clap": False,
 }
+
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
-
-# ============================================================
-# CLAP CELEBRATION
-# ============================================================
-CLAP_JS = """
-<script>
-(function() {
-    try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        function clap(t) {
-            const buf = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) {
-                d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
-            }
-            const src = ctx.createBufferSource();
-            src.buffer = buf;
-            const gain = ctx.createGain();
-            gain.gain.setValueAtTime(0.6, ctx.currentTime + t);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15);
-            src.connect(gain);
-            gain.connect(ctx.destination);
-            src.start(ctx.currentTime + t);
-        }
-        clap(0); clap(0.18); clap(0.36); clap(0.54); clap(0.72);
-    } catch(e) {}
-})();
-</script>
-"""
-
-def show_clap_celebration():
-    st.markdown("""
-    <div class='clap-banner'>
-        👏 👏 👏 &nbsp; Well done! That's correct! &nbsp; 👏 👏 👏
-    </div>
-    """ + CLAP_JS, unsafe_allow_html=True)
-
-# ============================================================
-# CORE API CALL
-# ============================================================
-def call_api(messages_list, system_prompt):
-    provider = api_config["provider"]
-    model = api_config["model"]
-    try:
-        if provider == "groq":
-            payload = {"model": model, "messages": [{"role": "system", "content": system_prompt}] + messages_list, "temperature": 0.7, "max_tokens": 1500}
-            headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json"}
-            r = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
-            if 'choices' in r and r['choices']:
-                return r['choices'][0]['message']['content']
-            return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
-        elif provider == "openrouter":
-            payload = {"model": model, "messages": [{"role": "system", "content": system_prompt}] + messages_list, "temperature": 0.7, "max_tokens": 1500}
-            headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json", "HTTP-Referer": "https://focusflow.app", "X-Title": "FocusFlow"}
-            r = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
-            if 'choices' in r and r['choices']:
-                return r['choices'][0]['message']['content']
-            return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
-        else:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
-            google_msgs = []
-            for m in ([{"role": "system", "content": system_prompt}] + messages_list):
-                role = "user" if m["role"] in ("user", "system") else "model"
-                google_msgs.append({"role": role, "parts": [{"text": m["content"]}]})
-            payload = {"contents": google_msgs, "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500}}
-            r = requests.post(url, json=payload, timeout=30).json()
-            if 'candidates' in r and r['candidates']:
-                return r['candidates'][0]['content']['parts'][0]['text']
-            return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
-    except Exception as e:
-        return f"❌ Error: {str(e)}"
-
-# ============================================================
-# GENERATE DAILY CHALLENGE
-# ============================================================
-def generate_daily_challenge(subject, exam_goal):
-    system_prompt = f"""You are FocusFlow, an expert tutor for {exam_goal} students.
-Generate exactly 5 practice questions for the subject: {subject}.
-Rules:
-- Questions must be specific to {subject} and relevant for {exam_goal}
-- Mix of MCQ and short answer questions
-- Each question clearly numbered
-- Do NOT include answers
-- Keep each question concise
-
-Format EXACTLY like this:
-**🎯 Today's Challenge: {subject} — 5 Questions**
-
-**Q1.** [Question]
-A) option  B) option  C) option  D) option
-
-**Q2.** [Question]
-A) option  B) option  C) option  D) option
-
-**Q3.** [Short answer question]
-
-**Q4.** [Question]
-A) option  B) option  C) option  D) option
-
-**Q5.** [Short answer question]
-"""
-    return call_api([{"role": "user", "content": f"Generate 5 {subject} questions for {exam_goal}"}], system_prompt)
-
-# ============================================================
-# GENERATE SMART FOLLOW-UP
-# ============================================================
-def generate_followup(last_ai_reply, subject):
-    system_prompt = """Based on the AI tutor's last reply, suggest ONE short follow-up action.
-Reply with ONLY a JSON object (no markdown, no extra text):
-{"label": "📄 Get full cheat sheet", "prompt": "Give me a full cheat sheet on this topic"}
-
-Label rules: start with emoji, max 6 words, helpful and natural."""
-    result = call_api([{"role": "user", "content": f"Last reply about: {last_ai_reply[:300]}"}], system_prompt)
-    try:
-        result = result.strip().replace("```json", "").replace("```", "").strip()
-        parsed = json.loads(result)
-        return parsed.get("label", "🔍 Explore further"), parsed.get("prompt", "Tell me more about this topic")
-    except:
-        return "🔍 Explore further", "Tell me more about this topic"
-
-# ============================================================
-# INTENT DETECTION
-# ============================================================
-def detect_intent(prompt: str) -> str:
-    p = prompt.lower().strip()
-    if any(s in p for s in ["explain", "cheat sheet", "give me", "tell me", "what is", "what are", "define", "formula", "how does", "how do", "steps", "derive", "proof", "theorem", "law of", "principle"]):
-        return "direct"
-    if any(s in p for s in ["hi", "hello", "hey", "thanks", "thank you", "bye", "good morning", "good night"]) and len(p.split()) < 6:
-        return "casual"
-    if any(s in p for s in ["hate", "difficult", "hard", "don't understand", "confused", "stuck", "panic", "scared", "anxious", "i can't", "lost", "frustrated"]):
-        return "empathetic"
-    return "socratic"
-
-# ============================================================
-# CHECK IF ANSWER IS CORRECT (for clap trigger)
-# ============================================================
-def check_if_correct(ai_response: str) -> bool:
-    positive = ["correct", "that's right", "well done", "excellent", "perfect", "great job", "spot on", "you got it", "absolutely right", "100%"]
-    r = ai_response.lower()
-    return any(p in r for p in positive)
-
-# ============================================================
-# MAIN AI RESPONSE WITH FULL HISTORY + PINNED ORIGINAL Q
-# ============================================================
-def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
-    days_left = (st.session_state.test_date - date.today()).days
-    crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
-
-    current_messages = st.session_state.threads[st.session_state.current_thread]
-    history = []
-    for msg in current_messages:
-        if not msg.get("hidden") and msg.get("msg_type") not in ("welcome", "stats", "system_trigger"):
-            role = "user" if msg["role"] == "user" else "assistant"
-            history.append({"role": role, "content": msg["content"]})
-    history = history[-10:]
-
-    original_q_reminder = ""
-    if st.session_state.original_question:
-        original_q_reminder = f"\n\nIMPORTANT: The student's ORIGINAL question was: \"{st.session_state.original_question}\". Always keep this in mind throughout the conversation."
-
-    if msg_type == "evaluate_answer":
-        system_prompt = f"""You are FocusFlow, a warm encouraging tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
-
-The AI previously asked: "{st.session_state.last_socratic_question}"
-The student answered: "{prompt}"
-
-IMPORTANT: Student may type just "A", "B", "C" or "D" — match against options in the question above.
-
-1. If CORRECT: Start with "🎉 That's correct!" then give full explanation.
-2. If PARTIALLY CORRECT: Acknowledge what's right, correct the rest, explain fully.
-3. If INCORRECT: Say "Not quite, but great attempt! 💪", correct kindly, explain clearly.
-
-Use markdown formatting. End with an encouraging line.
-Do NOT ask another question."""
-
-    elif msg_type == "casual":
-        system_prompt = f"""You are FocusFlow, a warm study buddy.{original_q_reminder}
-Respond warmly and conversationally. Keep under 3 sentences. Be encouraging."""
-
-    elif msg_type == "empathetic":
-        system_prompt = f"""Student is struggling emotionally.{original_q_reminder}
-Be deeply empathetic. Acknowledge feelings. Share ONE motivational tip.
-Suggest ONE tiny next step related to {st.session_state.current_topic}. Be warm like a caring older sibling."""
-
-    elif msg_type == "direct" or crunch_mode:
-        system_prompt = f"""You are an expert {st.session_state.exam_goal} tutor for {st.session_state.current_topic}.{original_q_reminder}
-Give a CLEAR STRUCTURED explanation with markdown:
-## 📋 [Topic]
-### 🔑 Core Concept
-### 🧮 Key Formula / Steps
-### ⚠️ Common Mistake
-### 💡 Quick Example"""
-
-    else:
-        system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
-Ask ONE diagnostic question to check understanding.
-- Multiple choice (A B C D) or short numerical
-- Do NOT give the answer yet
-- End with: "Take your time! If you're stuck, click the ⚡ button below 👇"
-- Keep under 5 lines"""
-
-    history.append({"role": "user", "content": prompt})
-    return call_api(history, system_prompt), msg_type
-
-# ============================================================
-# WELCOME CONTENT
-# ============================================================
-SUBJECT_CONTENT = {
-    "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?"},
-    "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?"},
-    "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?"},
-    "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?"},
-    "English": {"example_concept": "Explain the theme of 'The Road Not Taken'", "example_question": "What is the theme of 'The Road Not Taken'?"},
-    "History": {"example_concept": "Explain the causes of World War I", "example_question": "What were the main causes of World War I?"},
-    "Other": {"example_concept": "Explain the Pythagorean Theorem", "example_question": "What is the Pythagorean Theorem?"}
-}
 
 # ============================================================
 # SIDEBAR
 # ============================================================
 with st.sidebar:
     st.markdown("### 🎯 Your Goal")
-    exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"],
-        index=["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"].index(st.session_state.exam_goal))
-    current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"],
-        index=["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"].index(st.session_state.current_topic))
-
+    
+    exam_goal = st.selectbox(
+        "Exam/Goal",
+        ["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"],
+        index=["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"].index(st.session_state.exam_goal)
+    )
+    
+    current_topic = st.selectbox(
+        "Subject",
+        ["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"],
+        index=["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"].index(st.session_state.current_topic)
+    )
+    
     if exam_goal == "Other":
-        has_date = st.radio("Choose one:", ["Yes, I have a test date", "No, just learning"],
-            index=0 if st.session_state.has_specific_date else 1, label_visibility="collapsed")
+        st.markdown("**Do you have a specific exam date?**")
+        has_date = st.radio(
+            "Choose one:",
+            ["Yes, I have a test date", "No, just learning"],
+            index=0 if st.session_state.has_specific_date else 1,
+            label_visibility="collapsed"
+        )
         st.session_state.has_specific_date = (has_date == "Yes, I have a test date")
+        
         if st.session_state.has_specific_date:
             test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
         else:
             test_date = date.today() + timedelta(days=365)
-            st.caption("📌 Learning at your own pace!")
+            st.caption("📌 No countdown. Learning at your own pace!")
     else:
         st.session_state.has_specific_date = True
         test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
-
+    
     days_left = (test_date - date.today()).days
+    
     if st.session_state.has_specific_date:
-        if days_left <= 3: st.error(f"🚨 {days_left} days left! CRUNCH MODE")
-        elif days_left <= 14: st.warning(f"⏰ {days_left} days left")
-        else: st.info(f"📅 {days_left} days left")
-
+        if days_left <= 3:
+            st.error(f"🚨 {days_left} days left! CRUNCH MODE")
+        elif days_left <= 14:
+            st.warning(f"⏰ {days_left} days left")
+        else:
+            st.info(f"📅 {days_left} days left")
+    
     if st.button("🔄 Update Context", use_container_width=True):
         st.session_state.exam_goal = exam_goal
         st.session_state.current_topic = current_topic
         st.session_state.test_date = test_date
+        
         if current_topic not in st.session_state.threads:
             st.session_state.threads[current_topic] = []
+        
         st.session_state.current_thread = current_topic
         st.toast(f"Switched to {current_topic}!")
         st.rerun()
-
+    
     st.divider()
+    
+    # AI Status
     st.markdown("### 🔌 AI Status")
     st.success(f"✅ {api_config['provider'].upper()}")
     st.caption(f"Model: {api_config['model'].split('/')[-1]}")
-
+    
     st.divider()
+    
+    # Study Streak
     st.markdown("### 🔥 Study Streak")
     today = date.today()
     if st.session_state.last_study_date == today - timedelta(days=1):
@@ -597,17 +297,23 @@ with st.sidebar:
     elif st.session_state.last_study_date != today:
         st.session_state.study_streak = 1
         st.session_state.last_study_date = today
+    
     st.markdown(f"<div class='streak-badge'>🔥 {st.session_state.study_streak} day streak</div>", unsafe_allow_html=True)
-
+    
     st.divider()
+    
+    # Weak Areas
     st.markdown("### ⚠️ Focus Areas")
     if st.session_state.weak_areas:
-        for topic, count in sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[:5]:
+        sorted_weak = sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[:5]
+        for topic, count in sorted_weak:
             st.markdown(f"<span class='weak-area-tag'>{topic} ({count})</span>", unsafe_allow_html=True)
     else:
         st.caption("Keep studying to see your focus areas!")
-
+    
     st.divider()
+    
+    # Thread Switcher
     st.markdown("### 💬 Chat Threads")
     for thread_name in list(st.session_state.threads.keys()):
         cols = st.columns([4, 1])
@@ -621,166 +327,555 @@ with st.sidebar:
                 del st.session_state.threads[thread_name]
                 st.session_state.current_thread = "General"
                 st.rerun()
-
+    
     st.divider()
-
-    # ── DAILY CHALLENGE ──
+    
+       st.divider()
+    
+    # ============================================================
+    # POMODORO TIMER — FIXED WITH JAVASCRIPT
+    # ============================================================
+    
+    st.markdown("### ⏱️ Focus Timer")
+    
+    # Start / Stop buttons
+    pomo_cols = st.columns(2)
+    with pomo_cols[0]:
+        if st.button("▶️ 25m", use_container_width=True, key="pomo_start"):
+            st.session_state.pomodoro_active = True
+            st.session_state.pomodoro_end = datetime.now() + timedelta(minutes=25)
+            st.rerun()
+    
+    with pomo_cols[1]:
+        if st.button("⏹️ Stop", use_container_width=True, key="pomo_stop"):
+            st.session_state.pomodoro_active = False
+            st.session_state.pomodoro_end = None
+            st.rerun()
+    
+    # Timer display
+    if st.session_state.pomodoro_active and st.session_state.pomodoro_end:
+        remaining = st.session_state.pomodoro_end - datetime.now()
+        total_seconds = int(remaining.total_seconds())
+        
+        if total_seconds <= 0:
+            # Timer completed!
+            st.session_state.pomodoro_active = False
+            st.session_state.total_study_minutes += 25
+            st.balloons()
+            st.success("🎉 25 min done! Take a 5 min break.")
+            st.session_state.pomodoro_end = None
+            st.rerun()
+        else:
+            # Live JavaScript countdown
+            mins, secs = divmod(total_seconds, 60)
+            
+            st.markdown(f"""
+            <div style="text-align: center; margin: 12px 0;">
+                <div id="pomodoro-timer" style="
+                    font-size: 32px; 
+                    font-weight: bold; 
+                    color: #FF6600;
+                    font-family: monospace;
+                ">{mins:02d}:{secs:02d}</div>
+            </div>
+            
+            <script>
+                (function() {{
+                    let totalSeconds = {total_seconds};
+                    const timerElement = document.getElementById('pomodoro-timer');
+                    
+                    const countdown = setInterval(function() {{
+                        totalSeconds--;
+                        
+                        if (totalSeconds <= 0) {{
+                            clearInterval(countdown);
+                            timerElement.innerHTML = "00:00 ✅";
+                            timerElement.style.color = "#4CAF50";
+                            setTimeout(function() {{
+                                window.parent.postMessage({{type: 'streamlit:run'}}, '*');
+                            }}, 1000);
+                        }} else {{
+                            const m = Math.floor(totalSeconds / 60);
+                            const s = totalSeconds % 60;
+                            timerElement.innerHTML = 
+                                (m < 10 ? '0' : '') + m + ':' + 
+                                (s < 10 ? '0' : '') + s;
+                        }}
+                    }}, 1000);
+                }})();
+            </script>
+            """, unsafe_allow_html=True)
+    
+    st.divider()
+        else:
+            st.session_state.pomodoro_active = False
+            st.session_state.total_study_minutes += 25
+            st.balloons()
+            st.success("🎉 25 min done! Take a 5 min break.")
+    
+    st.divider()
+    
+    # ============================================================
+    # ENHANCED DAILY CHALLENGE WITH PRE-BUILT QUESTIONS
+    # ============================================================
     st.markdown("### 🎯 Daily Challenge")
+    
     today = date.today()
-
+    
+    # Check if yesterday's challenge was missed
+    if st.session_state.daily_challenge_date:
+        yesterday = today - timedelta(days=1)
+        last_challenge_date = st.session_state.daily_challenge_date
+        
+        if last_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
+            if st.session_state.daily_challenge:
+                st.session_state.challenge_history.append({
+                    "date": str(yesterday),
+                    "subject": st.session_state.current_topic,
+                    "challenge": st.session_state.daily_challenge,
+                    "completed": False
+                })
+            st.session_state.challenge_streak = 0
+            st.session_state.daily_challenge = None
+            st.session_state.daily_challenge_date = None
+            st.session_state.daily_challenge_completed = False
+    
     if st.session_state.daily_challenge_date != today:
         st.session_state.daily_challenge = None
         st.session_state.daily_challenge_completed = False
-        st.session_state.daily_challenge_subject = None
-
-    if st.session_state.daily_challenge_subject and st.session_state.daily_challenge_subject != current_topic:
-        st.session_state.daily_challenge = None
-        st.session_state.daily_challenge_completed = False
-        st.session_state.daily_challenge_subject = None
-
-    if st.session_state.daily_challenge_date:
-        yesterday = today - timedelta(days=1)
-        if st.session_state.daily_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
-            st.session_state.challenge_streak = 0
-
+    
+    # CHALLENGE STREAK BADGE
     if st.session_state.challenge_streak > 0:
         flame = "🔥" * min(st.session_state.challenge_streak, 5)
-        st.markdown(f"<div class='streak-badge'>{flame} {st.session_state.challenge_streak} day challenge streak!</div>", unsafe_allow_html=True)
-
-    if not st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-        with st.spinner("📝 Generating today's challenge..."):
-            challenge_text = generate_daily_challenge(current_topic, exam_goal)
-            st.session_state.daily_challenge = challenge_text
-            st.session_state.daily_challenge_date = today
-            st.session_state.daily_challenge_subject = current_topic
-
+        st.markdown(f"<div class='streak-badge'><span class='streak-flame'>{flame}</span> {st.session_state.challenge_streak} day streak!</div>", unsafe_allow_html=True)
+    
+    # DISPLAY CHALLENGE
     if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
         st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
+        
         if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
             st.session_state.daily_challenge_completed = True
-            st.session_state.challenge_streak += 1
-            st.session_state.challenge_history.append({"date": str(today), "subject": current_topic, "completed": True})
+            st.session_state.last_challenge_completed_date = today
+            
+            if st.session_state.last_challenge_completed_date == today - timedelta(days=1):
+                st.session_state.challenge_streak += 1
+            else:
+                st.session_state.challenge_streak = 1
+            
+            st.session_state.challenge_history.append({
+                "date": str(today),
+                "subject": st.session_state.current_topic,
+                "challenge": st.session_state.daily_challenge,
+                "completed": True
+            })
+            
             st.balloons()
-            st.toast(f"🎉 Challenge done! Streak: {st.session_state.challenge_streak}")
+            st.toast("🎉 Challenge completed! Streak: " + str(st.session_state.challenge_streak))
             st.rerun()
-    elif st.session_state.daily_challenge_completed:
-        st.markdown("<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>🎉 Come back tomorrow for a new one!</div>", unsafe_allow_html=True)
-
+    
+    elif st.session_state.daily_challenge and st.session_state.daily_challenge_completed:
+        st.markdown(f"<div class='challenge-complete'><b>✅ Completed!</b><br>{st.session_state.daily_challenge}<br><br>🎉 Great job! Come back tomorrow for a new challenge.</div>", unsafe_allow_html=True)
+        
+    else:
+        # No challenge generated yet for today
+        if st.button("🎯 Generate Today's Challenge", use_container_width=True):
+            import random
+            
+            # If weak areas exist, use AI to create targeted challenge (1 API call)
+            if st.session_state.weak_areas:
+                weakest_topic = sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[0][0]
+                challenge_text = random.choice([
+                    "Create a cheat sheet for {topic}",
+                    "Explain {topic} to yourself as if teaching a 5-year-old",
+                    "Find 3 previous year questions on {topic} and solve them",
+                    "Draw a mind map of {topic} on paper",
+                    "Write 5 flashcards for {topic}"
+                ]).format(topic=weakest_topic)
+                st.session_state.daily_challenge = f"📋 <b>Today's Challenge:</b><br>{challenge_text}<br><br><i>💡 This is based on your weak area: {weakest_topic}</i>"
+            
+            # Otherwise use pre-built question bank (ZERO API cost)
+            else:
+                CHALLENGE_BANKS = {
+                    "Physics": [
+                        {"task": "Solve these 3 problems:", "questions": [
+                            "1. A car accelerates from 0 to 20 m/s in 5s. Find acceleration.",
+                            "2. A 5kg object is pushed with 10N force. Find acceleration (F=ma).",
+                            "3. A ball is thrown upward at 20 m/s. Find max height (g=10 m/s²)."
+                        ]},
+                        {"task": "Concept check:", "questions": [
+                            "1. State Newton's First Law with one real-life example.",
+                            "2. Differentiate between speed and velocity.",
+                            "3. What is centripetal force? Give an example."
+                        ]}
+                    ],
+                    "Chemistry": [
+                        {"task": "Balance these equations:", "questions": [
+                            "1. H₂ + O₂ → H₂O",
+                            "2. Fe + O₂ → Fe₂O₃",
+                            "3. Al + HCl → AlCl₃ + H₂"
+                        ]}
+                    ],
+                    "Maths": [
+                        {"task": "Solve these quadratic equations:", "questions": [
+                            "1. x² - 5x + 6 = 0",
+                            "2. 2x² + 7x + 3 = 0",
+                            "3. x² - 4 = 0"
+                        ]}
+                    ],
+                    "Biology": [
+                        {"task": "Answer these cell biology questions:", "questions": [
+                            "1. Name the powerhouse of the cell and its function.",
+                            "2. Differentiate between plant and animal cells (3 differences).",
+                            "3. What is osmosis? Give a real-life example."
+                        ]}
+                    ],
+                    "English": [
+                        {"task": "Literature analysis:", "questions": [
+                            "1. What is the central theme of 'The Road Not Taken'?",
+                            "2. Identify 2 literary devices used in the poem.",
+                            "3. Why did the poet feel sorry in the poem?"
+                        ]}
+                    ],
+                    "History": [
+                        {"task": "Ancient Indian History:", "questions": [
+                            "1. Name 2 major cities of the Indus Valley Civilization.",
+                            "2. What was the Great Bath used for?",
+                            "3. Name the script used by the Harappans."
+                        ]},
+                        {"task": "World War I:", "questions": [
+                            "1. Name 2 immediate causes of WWI.",
+                            "2. What was the Treaty of Versailles?",
+                            "3. Which countries formed the Triple Alliance?"
+                        ]}
+                    ],
+                    "Other": [
+                        {"task": "General practice:", "questions": [
+                            "1. Solve: 15 + 27 × 3 - 8",
+                            "2. Convert 3/4 to decimal and percentage.",
+                            "3. Find the area of a circle with radius 7cm (π=22/7)."
+                        ]}
+                    ]
+                }
+                
+                subject_bank = CHALLENGE_BANKS.get(st.session_state.current_topic, CHALLENGE_BANKS["Other"])
+                selected = random.choice(subject_bank)
+                
+                questions_html = "<br>".join(selected["questions"])
+                st.session_state.daily_challenge = f"""
+📋 <b>Today's Challenge: {selected['task']}</b><br><br>
+{questions_html}<br><br>
+<i>💡 Solve these on paper or in your notebook, then mark complete!</i>
+"""
+            
+            st.session_state.daily_challenge_date = today
+            st.session_state.daily_challenge_completed = False
+            st.rerun()
+    
+    # Weekly summary
     if st.session_state.challenge_history:
         st.divider()
         st.markdown("### 📊 This Week")
-        this_week = [c for c in st.session_state.challenge_history
+        this_week = [c for c in st.session_state.challenge_history 
                      if datetime.strptime(c["date"], "%Y-%m-%d").date() >= today - timedelta(days=7)]
-        done = sum(1 for c in this_week if c["completed"])
-        st.markdown(f"✅ **{done}/7** challenges completed this week")
-
+        completed_this_week = sum(1 for c in this_week if c["completed"])
+        st.markdown(f"✅ **{completed_this_week}/7** challenges completed this week")
+    
     st.divider()
+    
     if st.button("🗑️ Clear This Chat", use_container_width=True):
         st.session_state.threads[st.session_state.current_thread] = []
-        st.session_state.awaiting_answer = False
-        st.session_state.last_socratic_question = None
-        st.session_state.original_question = None
-        st.session_state.last_followup_label = None
-        st.session_state.last_followup_prompt = None
         st.rerun()
+# ============================================================
+# INTENT DETECTION
+# ============================================================
+
+def detect_intent(prompt: str) -> str:
+    prompt_lower = prompt.lower().strip()
+    
+    direct_signals = [
+        "explain", "cheat sheet", "give me", "tell me", "what is",
+        "what are", "define", "formula for", "equation for",
+        "how does", "how do", "steps to", "method for",
+        "list of", "summary of", "overview of", "notes on",
+        "derive", "proof", "theorem", "law of", "principle of"
+    ]
+    if any(signal in prompt_lower for signal in direct_signals):
+        return "direct"
+    
+    casual_signals = [
+        "hi", "hello", "hey", "what's up", "sup", "how are you",
+        "bored", "tired", "joke", "fun", "chat", "thanks", "thank you",
+        "bye", "goodbye", "see you", "good morning", "good night"
+    ]
+    if any(signal in prompt_lower for signal in casual_signals) and len(prompt_lower.split()) < 6:
+        return "casual"
+    
+    struggle_signals = [
+        "hate", "difficult", "hard", "don't understand", "confused",
+        "stuck", "help me", "panic", "scared", "anxious", "worried",
+        "i can't", "i dont get", "no idea", "lost", "frustrated"
+    ]
+    if any(signal in prompt_lower for signal in struggle_signals):
+        return "empathetic"
+    
+    return "socratic"
+
+# ============================================================
+# AI RESPONSE FUNCTION
+# ============================================================
+
+def get_ai_response(prompt: str, msg_type: str, topic_tag: str, uploaded_image=None):
+    try:
+        provider = api_config["provider"]
+        model = api_config["model"]
+        days_left = (st.session_state.test_date - date.today()).days
+        crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
+        
+        if msg_type == "casual":
+            system_prompt = f"""You are FocusFlow, a warm study buddy. The student said: "{prompt}"
+Respond conversationally and warmly. If it's a greeting, greet back and briefly mention you're ready to help with {st.session_state.current_topic}.
+Keep under 3 sentences. Be encouraging. No study pressure right now."""
+            
+        elif msg_type == "empathetic":
+            system_prompt = f"""The student is struggling emotionally with studying. They said: "{prompt}"
+Be deeply empathetic. Acknowledge their feelings genuinely. Share ONE quick motivational tip or breathing technique.
+Then gently suggest ONE tiny, manageable next step related to {st.session_state.current_topic}.
+Keep it warm, not robotic. Like a caring older sibling, not a teacher."""
+            
+        elif msg_type == "direct" or crunch_mode:
+            system_prompt = f"""You are an expert {st.session_state.exam_goal} tutor. The student asked: "{prompt}"
+Provide a CLEAR, STRUCTURED cheat sheet / explanation.
+Format with markdown:
+## 📋 [Topic Name]
+### 🔑 Core Concept
+(2-3 sentences)
+### 🧮 Key Formula / Steps
+- Point 1
+- Point 2
+### ⚠️ Common Mistake
+(What students usually get wrong)
+### 💡 Quick Example
+(One solved example)
+Context: {st.session_state.exam_goal}, Subject: {st.session_state.current_topic}"""
+            
+        else:
+            system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
+The student asked: "{prompt}"
+
+Your job: Ask ONE specific diagnostic question to check their understanding.
+Rules:
+- Must relate directly to their question
+- Make it multiple choice (A, B, C, D) OR a short numerical answer
+- Do NOT give the answer or explanation yet
+- End with: "Take your time! If you're stuck, click the ⚡ button below 👇"
+- Keep under 5 lines total
+
+Example:
+"Quick check before I explain: In which organelle does photosynthesis occur?
+A) Mitochondria  B) Chloroplast  C) Nucleus  D) Ribosome
+
+Take your time! If you're stuck, click the ⚡ button below 👇"
+"""
+        
+        if provider == "groq":
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.append({"role": "user", "content": prompt})
+            
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {api_config['key']}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
+            
+            if 'choices' in response and response['choices']:
+                return response['choices'][0]['message']['content'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown error')
+                return f"⚠️ Groq Error: {error}", "error"
+        
+        elif provider == "openrouter":
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.append({"role": "user", "content": prompt})
+            
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {api_config['key']}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://focusflow.app",
+                "X-Title": "FocusFlow"
+            }
+            
+            response = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
+            
+            if 'choices' in response and response['choices']:
+                return response['choices'][0]['message']['content'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown error')
+                return f"⚠️ OpenRouter Error: {error}", "error"
+        
+        else:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
+            
+            content_parts = [{"text": system_prompt + "\n\nUser: " + prompt}]
+            
+            payload = {
+                "contents": [{"parts": content_parts}],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 1000
+                }
+            }
+            
+            response = requests.post(url, json=payload, timeout=30).json()
+            
+            if 'candidates' in response and response['candidates']:
+                return response['candidates'][0]['content']['parts'][0]['text'], msg_type
+            else:
+                error = response.get('error', {}).get('message', 'Unknown API error')
+                return f"⚠️ Google Error: {error}", "error"
+            
+    except requests.exceptions.RequestException as e:
+        return f"🌐 Connection error: {str(e)}", "error"
+    except Exception as e:
+        return f"❌ Error: {str(e)}", "error"
+
+# ============================================================
+# SUBJECT-SPECIFIC WELCOME CONTENT
+# ============================================================
+
+SUBJECT_CONTENT = {
+    "Physics": {
+        "example_concept": "Explain Newton's Laws of Motion",
+        "example_question": "What is Newton's First Law?"
+    },
+    "Chemistry": {
+        "example_concept": "Explain balancing chemical equations",
+        "example_question": "How do I balance chemical equations?"
+    },
+    "Maths": {
+        "example_concept": "Explain quadratic equations",
+        "example_question": "How do I solve quadratic equations?"
+    },
+    "Biology": {
+        "example_concept": "Explain Photosynthesis",
+        "example_question": "What is photosynthesis?"
+    },
+    "English": {
+        "example_concept": "Explain the theme of 'The Road Not Taken'",
+        "example_question": "What is the theme of 'The Road Not Taken'?"
+    },
+    "History": {
+        "example_concept": "Explain the causes of World War I",
+        "example_question": "What were the main causes of World War I?"
+    },
+    "Other": {
+        "example_concept": "Explain the Pythagorean Theorem",
+        "example_question": "What is the Pythagorean Theorem?"
+    }
+}
 
 # ============================================================
 # DISPLAY CHAT
 # ============================================================
+
 current_messages = st.session_state.threads[st.session_state.current_thread]
+
 days_left = (st.session_state.test_date - date.today()).days
 
+# Welcome message if thread is empty
 if not current_messages:
-    days_info = f"**{days_left} days** until your {st.session_state.exam_goal} exam!" if st.session_state.has_specific_date else "Learning at your own pace — no pressure!"
+    if st.session_state.has_specific_date:
+        days_info = f"**{days_left} days** until your {st.session_state.exam_goal} exam!"
+    else:
+        days_info = "Learning at your own pace — no pressure!"
+    
     subject_data = SUBJECT_CONTENT.get(st.session_state.current_topic, SUBJECT_CONTENT["Other"])
+    
     welcome = f"""👋 Hey! I'm your FocusFlow coach.
 
 **Current Setup:** {st.session_state.exam_goal} | {st.session_state.current_topic} | {days_info}
 
 I can help you:
 - 🧠 **Explain concepts** — Just ask "{subject_data['example_concept']}"
-- ❓ **Socratic mode** — I'll check your understanding first. Stuck? Click the button!
+- ❓ **Socratic mode** — I'll ask you a question first to check your understanding. Stuck? Click the button!
 - 📸 **Solve from images** — Upload a problem photo
 - 📝 **Practice questions** — Quick mock tests
 
 **Try asking: "{subject_data['example_question']}"**"""
-    current_messages.append({"role": "assistant", "content": welcome, "msg_type": "welcome"})
+    
+    current_messages.append({
+        "role": "assistant",
+        "content": welcome,
+        "msg_type": "welcome"
+    })
 
+# Render messages
 for i, message in enumerate(current_messages):
-    if message.get("hidden"):
-        continue
-
-    msg_type = message.get("msg_type", "default")
-    is_correct = message.get("is_correct", False)
-
-    # Use custom icons
-    avatar = "🧠" if message["role"] == "assistant" else "🧑‍🎓"
-
-    with st.chat_message(message["role"], avatar=avatar):
-
-        # Clap celebration for correct answers
-        if is_correct and message.get("show_clap"):
-            show_clap_celebration()
-
+    with st.chat_message(message["role"]):
+        
+        msg_type = message.get("msg_type", "default")
         if msg_type == "welcome":
             st.markdown(f"<div class='welcome-box'>{message['content']}</div>", unsafe_allow_html=True)
         elif msg_type == "cheat_sheet":
             st.markdown(f"<div class='cheat-sheet-box'>{message['content']}</div>", unsafe_allow_html=True)
         elif msg_type == "socratic":
             st.markdown(f"<div class='socratic-box'>{message['content']}</div>", unsafe_allow_html=True)
-        elif msg_type == "evaluate_answer":
-            if is_correct:
-                st.markdown(f"<div class='evaluate-correct-box'>{message['content']}</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='evaluate-wrong-box'>{message['content']}</div>", unsafe_allow_html=True)
         elif msg_type == "stats":
             st.markdown(f"<div class='stats-box'>{message['content']}</div>", unsafe_allow_html=True)
         elif msg_type == "error":
             st.markdown(f"<div class='error-box'>{message['content']}</div>", unsafe_allow_html=True)
         else:
             st.markdown(message["content"])
-
+        
         if message["role"] == "assistant" and "subject" in message:
             st.markdown(f"<span class='subject-pill'>📚 {message['subject']}</span>", unsafe_allow_html=True)
-
-        # STUCK button
+        
+        # "STUCK?" BUTTON
         if (message["role"] == "assistant" and
             message.get("msg_type") == "socratic" and
             not message.get("resolved", False)):
-            if st.button("⚡ Stuck? Get the cheat sheet", key=f"stuck_{st.session_state.current_thread}_{i}"):
+            
+            if st.button("⚡ Stuck? Get the cheat sheet", key=f"stuck_btn_{st.session_state.current_thread}_{i}"):
                 message["resolved"] = True
-                st.session_state.awaiting_answer = False
-                st.session_state.last_socratic_question = None
+                
                 weak_key = f"{st.session_state.current_topic}: {message.get('topic', 'General')}"
                 st.session_state.weak_areas[weak_key] = st.session_state.weak_areas.get(weak_key, 0) + 1
-                trigger = f"[SYSTEM: Student clicked Stuck. Give cheat sheet for: {message.get('topic', 'topic')}]"
-                current_messages.append({"role": "user", "content": trigger, "hidden": True, "msg_type": "system_trigger"})
-                with st.chat_message("assistant", avatar="🧠"):
-                    with st.spinner("Generating cheat sheet..."):
-                        answer, _ = get_ai_response(trigger, "direct", message.get("topic", "General"))
-                        current_messages.append({"role": "assistant", "content": answer, "msg_type": "cheat_sheet", "topic": message.get("topic", "General"), "subject": st.session_state.current_topic, "resolved": True})
+                
+                trigger_prompt = f"[SYSTEM: Student clicked 'Stuck' on Socratic question about: {message.get('topic', 'topic')}. Provide direct, structured cheat sheet with: 1) Core concept 2) Key formula/steps 3) Common mistake 4) Quick example. Be concise.]"
+                
+                current_messages.append({
+                    "role": "user",
+                    "content": trigger_prompt,
+                    "hidden": True,
+                    "msg_type": "system_trigger"
+                })
+                
+                with st.chat_message("assistant"):
+                    with st.spinner('Generating cheat sheet...'):
+                        answer, _ = get_ai_response(trigger_prompt, "direct", message.get('topic', 'General'))
+                        current_messages.append({
+                            "role": "assistant",
+                            "content": answer,
+                            "msg_type": "cheat_sheet",
+                            "topic": message.get('topic', 'General'),
+                            "subject": st.session_state.current_topic,
+                            "resolved": True
+                        })
                 st.rerun()
-
-        # SMART FOLLOW-UP BUTTON on last assistant message
-        is_last = (i == len(current_messages) - 1)
-        if (message["role"] == "assistant" and is_last and
-            msg_type not in ("welcome", "socratic", "stats") and
-            st.session_state.last_followup_label):
-            st.markdown("<div class='followup-btn'>", unsafe_allow_html=True)
-            if st.button(st.session_state.last_followup_label, key=f"followup_{i}"):
-                followup_prompt = st.session_state.last_followup_prompt
-                st.session_state.last_followup_label = None
-                st.session_state.last_followup_prompt = None
-                current_messages.append({"role": "user", "content": followup_prompt, "msg_type": "user_question"})
-                with st.chat_message("assistant", avatar="🧠"):
-                    with st.spinner("Thinking..."):
-                        answer, mt = get_ai_response(followup_prompt, "direct", followup_prompt[:40])
-                        current_messages.append({"role": "assistant", "content": answer, "msg_type": mt, "subject": st.session_state.current_topic, "resolved": True})
-                        label, prompt_s = generate_followup(answer, st.session_state.current_topic)
-                        st.session_state.last_followup_label = label
-                        st.session_state.last_followup_prompt = prompt_s
-                st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
 # IMAGE UPLOAD
@@ -791,84 +886,63 @@ with st.expander("📎 Attach Image (Optional)"):
         st.image(uploaded_image, caption="Preview", use_column_width=True)
 
 # ============================================================
-# PENDING AI REQUESTS
+# PROCESS PENDING AI REQUESTS
 # ============================================================
+
 if st.session_state.pending_ai_request:
     request = st.session_state.pending_ai_request
     st.session_state.pending_ai_request = None
-    with st.chat_message("assistant", avatar="🧠"):
-        with st.spinner("Thinking..."):
-            answer, msg_type = get_ai_response(request["prompt"], request["msg_type"], request["topic"])
-            is_correct = False
-            if request["msg_type"] == "evaluate_answer":
-                is_correct = check_if_correct(answer)
-            current_messages.append({"role": "assistant", "content": answer, "msg_type": msg_type, "topic": request["topic"], "subject": st.session_state.current_topic, "resolved": True, "is_correct": is_correct, "show_clap": is_correct})
-            if msg_type == "socratic":
-                st.session_state.awaiting_answer = True
-                st.session_state.last_socratic_question = answer
-            else:
-                label, prompt_s = generate_followup(answer, st.session_state.current_topic)
-                st.session_state.last_followup_label = label
-                st.session_state.last_followup_prompt = prompt_s
+    
+    with st.chat_message("assistant"):
+        with st.spinner('Thinking...'):
+            answer, msg_type = get_ai_response(
+                request["prompt"],
+                request["msg_type"],
+                request["topic"],
+                uploaded_image if request.get("has_image") else None
+            )
+            
+            current_messages.append({
+                "role": "assistant",
+                "content": answer,
+                "msg_type": msg_type,
+                "topic": request["topic"],
+                "subject": st.session_state.current_topic,
+                "resolved": True if msg_type != "socratic" else False
+            })
     st.rerun()
 
 # ============================================================
 # CHAT INPUT
 # ============================================================
+
 if prompt := st.chat_input("Ask a question..."):
+    
     today = date.today()
     if st.session_state.last_study_date != today:
         st.session_state.study_streak += 1
         st.session_state.last_study_date = today
-
-    current_messages.append({"role": "user", "content": prompt, "msg_type": "user_question"})
-
-    user_msgs = [m for m in current_messages if m["role"] == "user" and not m.get("hidden")]
-    if len(user_msgs) == 1:
-        st.session_state.original_question = prompt
-
-    if st.session_state.awaiting_answer and st.session_state.last_socratic_question:
-        intent = "evaluate_answer"
-        topic_tag = st.session_state.last_socratic_question[:40]
-        st.session_state.awaiting_answer = False
-        st.session_state.last_socratic_question = None
-        for msg in reversed(current_messages):
-            if msg.get("msg_type") == "socratic" and not msg.get("resolved", False):
-                msg["resolved"] = True
-                break
-    else:
-        intent = detect_intent(prompt)
-        topic_tag = prompt[:40]
-
-    with st.chat_message("assistant", avatar="🧠"):
-        with st.spinner("Thinking..."):
-            answer, msg_type = get_ai_response(prompt, intent, topic_tag)
-
-            is_correct = False
-            if intent == "evaluate_answer":
-                is_correct = check_if_correct(answer)
-                if is_correct:
-                    show_clap_celebration()
-
-            if msg_type == "socratic":
-                st.session_state.awaiting_answer = True
-                st.session_state.last_socratic_question = answer
-                st.session_state.last_followup_label = None
-                st.session_state.last_followup_prompt = None
-            else:
-                label, prompt_s = generate_followup(answer, st.session_state.current_topic)
-                st.session_state.last_followup_label = label
-                st.session_state.last_followup_prompt = prompt_s
-
+    
+    current_messages.append({
+        "role": "user",
+        "content": prompt,
+        "msg_type": "user_question"
+    })
+    
+    intent = detect_intent(prompt)
+    topic_tag = prompt[:40]
+    
+    with st.chat_message("assistant"):
+        with st.spinner('Thinking...'):
+            answer, msg_type = get_ai_response(prompt, intent, topic_tag, uploaded_image)
+            
             current_messages.append({
                 "role": "assistant",
                 "content": answer,
-                "msg_type": "evaluate_answer" if intent == "evaluate_answer" else msg_type,
+                "msg_type": msg_type,
                 "topic": topic_tag,
                 "subject": st.session_state.current_topic,
-                "resolved": True,
-                "is_correct": is_correct,
-                "show_clap": False
+                "resolved": False if msg_type == "socratic" else True
             })
     st.rerun()
 
@@ -880,16 +954,34 @@ qa_col1, qa_col2, qa_col3, qa_col4 = st.columns(4)
 
 with qa_col1:
     if st.button("📄 Cheat Sheet", use_container_width=True):
-        p = f"Give me a comprehensive cheat sheet for {st.session_state.current_topic} ({st.session_state.exam_goal})"
-        current_messages.append({"role": "user", "content": p, "msg_type": "user_question"})
-        st.session_state.pending_ai_request = {"prompt": p, "msg_type": "direct", "topic": f"{st.session_state.current_topic} Cheat Sheet"}
+        cheat_prompt = f"Give me a comprehensive cheat sheet for {st.session_state.current_topic} ({st.session_state.exam_goal})"
+        current_messages.append({
+            "role": "user",
+            "content": cheat_prompt,
+            "msg_type": "user_question"
+        })
+        st.session_state.pending_ai_request = {
+            "prompt": cheat_prompt,
+            "msg_type": "direct",
+            "topic": f"{st.session_state.current_topic} Cheat Sheet",
+            "has_image": False
+        }
         st.rerun()
 
 with qa_col2:
     if st.button("📝 Mock Test", use_container_width=True):
-        p = f"Generate 5 practice questions for {st.session_state.current_topic} ({st.session_state.exam_goal}) with answers and explanations"
-        current_messages.append({"role": "user", "content": p, "msg_type": "user_question"})
-        st.session_state.pending_ai_request = {"prompt": p, "msg_type": "direct", "topic": f"{st.session_state.current_topic} Mock Test"}
+        mock_prompt = f"Generate 5 practice questions for {st.session_state.current_topic} ({st.session_state.exam_goal}) with answers and explanations"
+        current_messages.append({
+            "role": "user",
+            "content": mock_prompt,
+            "msg_type": "user_question"
+        })
+        st.session_state.pending_ai_request = {
+            "prompt": mock_prompt,
+            "msg_type": "direct",
+            "topic": f"{st.session_state.current_topic} Mock Test",
+            "has_image": False
+        }
         st.rerun()
 
 with qa_col3:
@@ -897,6 +989,7 @@ with qa_col3:
         total_msgs = sum(len(msgs) for msgs in st.session_state.threads.values())
         weak_topics = list(st.session_state.weak_areas.keys())[:3]
         focus_time = st.session_state.total_study_minutes
+        
         stats_msg = f"""📊 Your FocusFlow Stats
 
 🔥 **Study Streak:** {st.session_state.study_streak} days
@@ -905,7 +998,13 @@ with qa_col3:
 ⚠️ **Focus Areas:** {', '.join(weak_topics) if weak_topics else 'None yet — keep going!'}
 
 Keep crushing it! 🚀"""
-        current_messages.append({"role": "assistant", "content": stats_msg, "msg_type": "stats", "subject": "System"})
+        
+        current_messages.append({
+            "role": "assistant",
+            "content": stats_msg,
+            "msg_type": "stats",
+            "subject": "System"
+        })
         st.rerun()
 
 with qa_col4:
@@ -913,7 +1012,15 @@ with qa_col4:
         chat_text = []
         for msg in current_messages:
             if not msg.get("hidden"):
-                prefix = "🧑‍🎓 You" if msg["role"] == "user" else "🧠 FocusFlow"
+                prefix = "🧑‍🎓 You" if msg["role"] == "user" else "🤖 FocusFlow"
                 chat_text.append(f"{prefix}:\n{msg['content']}")
+        
         export_text = f"FocusFlow Chat Export\n{'='*50}\nExam: {st.session_state.exam_goal}\nSubject: {st.session_state.current_topic}\nDate: {date.today()}\n{'='*50}\n\n" + "\n\n---\n\n".join(chat_text)
-        st.download_button("📥 Download Chat", export_text, file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt", mime="text/plain", use_container_width=True)
+        
+        st.download_button(
+            "📥 Download Chat",
+            export_text,
+            file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
