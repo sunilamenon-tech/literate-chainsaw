@@ -3,6 +3,7 @@ import requests
 from datetime import date, datetime, timedelta
 import random
 import json
+import base64
 
 # ============================================================
 # PAGE CONFIG
@@ -11,261 +12,146 @@ st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="centered")
 
 st.markdown("""
 <style>
-    /* ── DARK THEME BASE ── */
-    .stApp { background-color: #0F0F0F !important; color: #e0e0e0; }
-    section[data-testid="stSidebar"] { background-color: #161616 !important; border-right: 1px solid #2a2a2a; }
-    .stChatMessage { background: transparent !important; }
+    /* ── ORIGINAL LIGHT THEME ── */
+    .stApp {background-color: #FFF9E6;}
+    .stButton>button {background-color: #FF6600; color: white; border-radius: 20px; font-weight: 600;}
+    .stChatMessage {border-radius: 15px;}
 
-    /* ── TYPOGRAPHY ── */
     * { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
-    h1 { font-size: 22px !important; font-weight: 700 !important; color: #FF6600 !important; letter-spacing: -0.3px; }
 
-    /* ── BUTTONS ── */
-    .stButton>button {
-        background-color: #FF6600 !important;
-        color: white !important;
-        border-radius: 24px !important;
-        font-weight: 600 !important;
-        border: none !important;
-        font-size: 13px !important;
-        padding: 8px 18px !important;
-        transition: background 0.2s;
-    }
-    .stButton>button:hover { background-color: #e55a00 !important; }
-
-    /* ── CHAT BUBBLES ── */
-    [data-testid="stChatMessageContent"] {
-        background: #1a1a1a !important;
-        border: 1px solid #2a2a2a !important;
-        border-radius: 0 14px 14px 14px !important;
-        color: #e0e0e0 !important;
-        font-size: 14px !important;
-        line-height: 1.6 !important;
-    }
-    [data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"] {
-        background: #FF6600 !important;
-        border: none !important;
-        border-radius: 14px 0 14px 14px !important;
-        color: white !important;
-    }
-
-    /* ── CHAT INPUT ── */
-    .stChatInput textarea {
-        background: #1a1a1a !important;
-        border: 1px solid #333 !important;
-        border-radius: 24px !important;
-        color: #e0e0e0 !important;
-        font-size: 14px !important;
-    }
-    .stChatInput textarea::placeholder { color: #555 !important; }
-
-    /* ── SELECTBOX & INPUTS ── */
-    .stSelectbox > div > div {
-        background: #1e1e1e !important;
-        border: 1px solid #333 !important;
-        border-radius: 10px !important;
-        color: #e0e0e0 !important;
-    }
-    .stDateInput > div > div {
-        background: #1e1e1e !important;
-        border: 1px solid #333 !important;
-        border-radius: 10px !important;
-        color: #e0e0e0 !important;
-    }
-
-    /* ── DIVIDER ── */
-    hr { border-color: #2a2a2a !important; }
-
-    /* ── SIDEBAR TEXT ── */
-    .stSidebar p, .stSidebar label, .stSidebar .stMarkdown { color: #ccc !important; }
-    .stSidebar h1, .stSidebar h2, .stSidebar h3 { color: #FF6600 !important; }
-
-    /* ── MESSAGE BOXES ── */
     .cheat-sheet-box {
-        background: #1e1a10;
+        background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
         border-left: 4px solid #FF6600;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
     }
     .socratic-box {
-        background: #0f1e12;
+        background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
         border-left: 4px solid #4CAF50;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
     }
     .welcome-box {
-        background: #0e1520;
+        background: linear-gradient(135deg, #E3F2FD, #BBDEFB);
         border-left: 4px solid #2196F3;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
     }
     .stats-box {
-        background: #160e1e;
+        background: linear-gradient(135deg, #F3E5F5, #E1BEE7);
         border-left: 4px solid #9C27B0;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
-    }
-    .error-box {
-        background: #1e0e0e;
-        border-left: 4px solid #C62828;
-        padding: 12px;
-        border-radius: 8px;
-        color: #ff8a8a;
-        font-size: 14px;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
     }
     .evaluate-correct-box {
-        background: #0a1f0a;
+        background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
         border-left: 4px solid #4CAF50;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
     }
     .evaluate-wrong-box {
-        background: #1a1000;
+        background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
         border-left: 4px solid #FF9800;
-        padding: 16px;
-        border-radius: 0 12px 12px 12px;
-        margin: 4px 0;
-        color: #e0e0e0;
-        font-size: 14px;
-        line-height: 1.6;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
     }
-
-    /* ── BADGES ── */
     .streak-badge {
-        background: linear-gradient(90deg, #FF6600, #FF9900);
-        color: white;
-        padding: 8px 14px;
-        border-radius: 20px;
-        text-align: center;
-        font-weight: 700;
-        font-size: 13px;
-        margin: 6px 0;
+        background: linear-gradient(45deg, #FF6600, #FF9900);
+        color: white; padding: 8px 16px; border-radius: 20px;
+        text-align: center; font-weight: bold; margin: 8px 0;
     }
     .weak-area-tag {
-        display: inline-block;
-        background: #1e1010;
-        color: #ff8a8a;
-        border: 1px solid #3a1a1a;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 11px;
-        margin: 2px;
+        display: inline-block; background-color: #FFEBEE;
+        color: #C62828; padding: 4px 10px; border-radius: 12px;
+        font-size: 12px; margin: 2px;
     }
     .subject-pill {
-        display: inline-block;
-        background: #1e1510;
-        color: #FF9900;
-        border: 1px solid #3a2a10;
-        padding: 3px 12px;
-        border-radius: 12px;
-        font-size: 11px;
-        margin-top: 4px;
+        display: inline-block; background-color: #FFE4CC;
+        color: #FF6600; padding: 4px 12px; border-radius: 12px;
+        font-size: 11px; margin-top: 4px;
     }
-    .challenge-box {
-        background: #1a1600;
-        border: 1px solid #3a3000;
-        border-left: 4px solid #FFC107;
-        padding: 14px;
-        border-radius: 0 12px 12px 12px;
-        margin: 6px 0;
-        color: #e0e0e0;
-        font-size: 12px;
-        line-height: 1.6;
-    }
-    .challenge-complete {
-        background: #0a1f0a;
-        border-left: 4px solid #4CAF50;
-        padding: 14px;
-        border-radius: 12px;
-        margin: 6px 0;
-        color: #aaffaa;
-        font-size: 12px;
+    .error-box {
+        background-color: #FFEBEE; border-left: 4px solid #C62828;
+        padding: 12px; border-radius: 8px; color: #C62828;
     }
     .setup-box {
-        background: #1e1510;
-        border: 2px solid #FF6600;
-        padding: 20px;
-        border-radius: 16px;
-        margin: 16px 0;
-        color: #e0e0e0;
+        background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
+        border: 2px solid #FF6600; padding: 24px;
+        border-radius: 16px; margin: 20px 0;
     }
     .setup-step {
-        background: #1a1a1a;
-        padding: 10px 14px;
-        border-radius: 8px;
-        margin: 6px 0;
-        border-left: 3px solid #FF6600;
-        font-size: 13px;
-        color: #ccc;
+        background: white; padding: 12px 16px; border-radius: 8px;
+        margin: 8px 0; border-left: 3px solid #FF6600;
     }
-
-    /* ── FOLLOW-UP BUTTON ── */
+    .challenge-box {
+        background: linear-gradient(135deg, #FFF8E1, #FFECB3);
+        border-left: 4px solid #FFC107;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
+    }
+    .challenge-complete {
+        background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
+        border-left: 4px solid #4CAF50;
+        padding: 16px; border-radius: 12px; margin: 8px 0;
+    }
+    .clap-banner {
+        background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
+        border: 2px solid #4CAF50; border-radius: 12px;
+        padding: 12px 16px; text-align: center;
+        font-size: 18px; font-weight: 700; color: #2E7D32;
+        margin: 8px 0;
+        animation: popIn 0.4s ease-out;
+    }
+    @keyframes popIn {
+        0% { transform: scale(0.8); opacity: 0; }
+        70% { transform: scale(1.05); }
+        100% { transform: scale(1); opacity: 1; }
+    }
     .followup-btn button {
         background: transparent !important;
-        border: 1px solid #2196F3 !important;
+        border: 1.5px solid #2196F3 !important;
         color: #2196F3 !important;
         border-radius: 20px !important;
         font-size: 12px !important;
         padding: 4px 14px !important;
         margin-top: 6px !important;
     }
-    .followup-btn button:hover { background: #0d2a3a !important; }
-
-    /* ── CLAP CELEBRATION ── */
-    .clap-banner {
-        background: linear-gradient(90deg, #0a1f0a, #0f2e0f);
-        border: 1px solid #4CAF50;
-        border-radius: 12px;
-        padding: 12px 16px;
-        text-align: center;
-        font-size: 20px;
-        margin: 8px 0;
-        animation: fadeInOut 3s ease-in-out forwards;
-    }
-    @keyframes fadeInOut {
-        0% { opacity: 0; transform: scale(0.95); }
-        20% { opacity: 1; transform: scale(1.02); }
-        80% { opacity: 1; }
-        100% { opacity: 0; }
-    }
-
-    /* ── INFO / WARNING / ERROR NATIVE ── */
-    .stAlert { border-radius: 10px !important; }
-
-    /* ── EXPANDER ── */
-    .stExpander { background: #1a1a1a !important; border: 1px solid #2a2a2a !important; border-radius: 10px !important; }
-
-    /* ── METRICS ── */
-    [data-testid="stMetric"] { background: #1a1a1a; border-radius: 10px; padding: 10px; border: 1px solid #2a2a2a; }
-    [data-testid="stMetricLabel"] { color: #888 !important; font-size: 12px !important; }
-    [data-testid="stMetricValue"] { color: #FF6600 !important; font-size: 20px !important; font-weight: 700 !important; }
+    .streak-flame { font-size: 24px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
 # ============================================================
-# DETECT WHICH API KEY IS AVAILABLE
+# CLAP SOUND via Web Audio API
+# ============================================================
+CLAP_JS = """
+<script>
+(function() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        function clap(t) {
+            const buf = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) {
+                d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+            }
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.6, ctx.currentTime + t);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15);
+            src.connect(gain);
+            gain.connect(ctx.destination);
+            src.start(ctx.currentTime + t);
+        }
+        clap(0); clap(0.2); clap(0.4); clap(0.6); clap(0.8);
+    } catch(e) {}
+})();
+</script>
+"""
+
+def show_clap_celebration():
+    st.markdown(
+        "<div class='clap-banner'>👏 👏 👏 &nbsp; Well done! That's correct! &nbsp; 👏 👏 👏</div>" + CLAP_JS,
+        unsafe_allow_html=True
+    )
+
+# ============================================================
+# API KEY DETECTION
 # ============================================================
 api_config = None
 
@@ -290,7 +176,7 @@ if not api_config:
     except: pass
 
 if not api_config:
-    st.markdown("<div class='setup-box'><h2>🔧 Setup Required</h2><p>Add any ONE of these API keys to your Streamlit secrets:</p></div>", unsafe_allow_html=True)
+    st.markdown("<div class='setup-box'><h2>🔧 Setup Required</h2><p>Add any ONE API key to Streamlit secrets.</p></div>", unsafe_allow_html=True)
     st.markdown("<div class='setup-step'><b>Groq (Free):</b> <a href='https://console.groq.com/keys' target='_blank'>console.groq.com/keys</a><br>Add: <code>GROQ_API_KEY = \"gsk_your-key\"</code></div>", unsafe_allow_html=True)
     st.error("⛔ No valid API key found.")
     st.stop()
@@ -322,75 +208,75 @@ defaults = {
     "original_question": None,
     "last_followup_label": None,
     "last_followup_prompt": None,
-    "show_clap": False,
 }
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
 # ============================================================
-# CLAP CELEBRATION
+# CORE API CALL — supports text + optional image
 # ============================================================
-CLAP_JS = """
-<script>
-(function() {
-    try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        function clap(t) {
-            const buf = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) {
-                d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
-            }
-            const src = ctx.createBufferSource();
-            src.buffer = buf;
-            const gain = ctx.createGain();
-            gain.gain.setValueAtTime(0.6, ctx.currentTime + t);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15);
-            src.connect(gain);
-            gain.connect(ctx.destination);
-            src.start(ctx.currentTime + t);
-        }
-        clap(0); clap(0.18); clap(0.36); clap(0.54); clap(0.72);
-    } catch(e) {}
-})();
-</script>
-"""
-
-def show_clap_celebration():
-    st.markdown("""
-    <div class='clap-banner'>
-        👏 👏 👏 &nbsp; Well done! That's correct! &nbsp; 👏 👏 👏
-    </div>
-    """ + CLAP_JS, unsafe_allow_html=True)
-
-# ============================================================
-# CORE API CALL
-# ============================================================
-def call_api(messages_list, system_prompt):
+def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
     provider = api_config["provider"]
     model = api_config["model"]
     try:
         if provider == "groq":
-            payload = {"model": model, "messages": [{"role": "system", "content": system_prompt}] + messages_list, "temperature": 0.7, "max_tokens": 1500}
+            # Groq supports vision on llava models; for text-only models attach image as text note
+            msgs = [{"role": "system", "content": system_prompt}] + messages_list
+            if image_b64:
+                # Add image as last user message with vision content
+                msgs.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+                        {"type": "text", "text": msgs[-1]["content"] if msgs[-1]["role"] == "user" else "What do you see?"}
+                    ]
+                })
+                msgs = msgs[:-2] + [msgs[-1]]  # replace last user msg with vision msg
+            payload = {"model": model, "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
             headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json"}
             r = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
             if 'choices' in r and r['choices']:
                 return r['choices'][0]['message']['content']
             return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
+
         elif provider == "openrouter":
-            payload = {"model": model, "messages": [{"role": "system", "content": system_prompt}] + messages_list, "temperature": 0.7, "max_tokens": 1500}
-            headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json", "HTTP-Referer": "https://focusflow.app", "X-Title": "FocusFlow"}
+            msgs = [{"role": "system", "content": system_prompt}] + messages_list
+            if image_b64:
+                last_user_content = msgs[-1]["content"] if msgs[-1]["role"] == "user" else "What do you see in this image?"
+                msgs[-1] = {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+                        {"type": "text", "text": last_user_content}
+                    ]
+                }
+            payload = {"model": "google/gemini-2.0-flash-exp:free" if image_b64 else model,
+                       "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
+            headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json",
+                       "HTTP-Referer": "https://focusflow.app", "X-Title": "FocusFlow"}
             r = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
             if 'choices' in r and r['choices']:
                 return r['choices'][0]['message']['content']
             return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
+
         else:
+            # Google Gemini — supports vision natively
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
             google_msgs = []
-            for m in ([{"role": "system", "content": system_prompt}] + messages_list):
+            all_msgs = [{"role": "system", "content": system_prompt}] + messages_list
+            for m in all_msgs:
                 role = "user" if m["role"] in ("user", "system") else "model"
                 google_msgs.append({"role": role, "parts": [{"text": m["content"]}]})
+            if image_b64:
+                last_user_text = messages_list[-1]["content"] if messages_list and messages_list[-1]["role"] == "user" else "What do you see?"
+                google_msgs[-1] = {
+                    "role": "user",
+                    "parts": [
+                        {"inline_data": {"mime_type": image_mime, "data": image_b64}},
+                        {"text": last_user_text}
+                    ]
+                }
             payload = {"contents": google_msgs, "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500}}
             r = requests.post(url, json=payload, timeout=30).json()
             if 'candidates' in r and r['candidates']:
@@ -406,10 +292,9 @@ def generate_daily_challenge(subject, exam_goal):
     system_prompt = f"""You are FocusFlow, an expert tutor for {exam_goal} students.
 Generate exactly 5 practice questions for the subject: {subject}.
 Rules:
-- Questions must be specific to {subject} and relevant for {exam_goal}
-- Mix of MCQ and short answer questions
-- Each question clearly numbered
-- Do NOT include answers
+- Specific to {subject}, relevant for {exam_goal}
+- Mix of MCQ and short answer
+- Clearly numbered, no answers included
 - Keep each question concise
 
 Format EXACTLY like this:
@@ -431,14 +316,13 @@ A) option  B) option  C) option  D) option
     return call_api([{"role": "user", "content": f"Generate 5 {subject} questions for {exam_goal}"}], system_prompt)
 
 # ============================================================
-# GENERATE SMART FOLLOW-UP
+# GENERATE SMART FOLLOW-UP BUTTON
 # ============================================================
 def generate_followup(last_ai_reply, subject):
     system_prompt = """Based on the AI tutor's last reply, suggest ONE short follow-up action.
 Reply with ONLY a JSON object (no markdown, no extra text):
 {"label": "📄 Get full cheat sheet", "prompt": "Give me a full cheat sheet on this topic"}
-
-Label rules: start with emoji, max 6 words, helpful and natural."""
+Label: start with emoji, max 6 words."""
     result = call_api([{"role": "user", "content": f"Last reply about: {last_ai_reply[:300]}"}], system_prompt)
     try:
         result = result.strip().replace("```json", "").replace("```", "").strip()
@@ -452,7 +336,7 @@ Label rules: start with emoji, max 6 words, helpful and natural."""
 # ============================================================
 def detect_intent(prompt: str) -> str:
     p = prompt.lower().strip()
-    if any(s in p for s in ["explain", "cheat sheet", "give me", "tell me", "what is", "what are", "define", "formula", "how does", "how do", "steps", "derive", "proof", "theorem", "law of", "principle"]):
+    if any(s in p for s in ["explain", "cheat sheet", "give me", "tell me", "what is", "what are", "define", "formula", "how does", "how do", "steps", "derive", "proof", "theorem", "law of", "principle", "list", "name"]):
         return "direct"
     if any(s in p for s in ["hi", "hello", "hey", "thanks", "thank you", "bye", "good morning", "good night"]) and len(p.split()) < 6:
         return "casual"
@@ -461,20 +345,21 @@ def detect_intent(prompt: str) -> str:
     return "socratic"
 
 # ============================================================
-# CHECK IF ANSWER IS CORRECT (for clap trigger)
+# CHECK IF ANSWER IS CORRECT
 # ============================================================
 def check_if_correct(ai_response: str) -> bool:
-    positive = ["correct", "that's right", "well done", "excellent", "perfect", "great job", "spot on", "you got it", "absolutely right", "100%"]
-    r = ai_response.lower()
-    return any(p in r for p in positive)
+    positive = ["correct", "that's right", "well done", "excellent", "perfect", "great job",
+                "spot on", "you got it", "absolutely right", "100%", "🎉", "right answer"]
+    return any(p in ai_response.lower() for p in positive)
 
 # ============================================================
-# MAIN AI RESPONSE WITH FULL HISTORY + PINNED ORIGINAL Q
+# MAIN AI RESPONSE — full history + pinned original Q + image support
 # ============================================================
-def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
+def get_ai_response(prompt: str, msg_type: str, topic_tag: str, image_b64=None, image_mime=None):
     days_left = (st.session_state.test_date - date.today()).days
     crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
 
+    # Build history
     current_messages = st.session_state.threads[st.session_state.current_thread]
     history = []
     for msg in current_messages:
@@ -485,22 +370,51 @@ def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
 
     original_q_reminder = ""
     if st.session_state.original_question:
-        original_q_reminder = f"\n\nIMPORTANT: The student's ORIGINAL question was: \"{st.session_state.original_question}\". Always keep this in mind throughout the conversation."
+        original_q_reminder = f"\n\nIMPORTANT: The student's ORIGINAL question was: \"{st.session_state.original_question}\". Always keep this in mind."
 
+    # Image with no question
+    if image_b64 and (not prompt or prompt.strip() == ""):
+        system_prompt = f"""You are FocusFlow, a helpful tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
+The student has uploaded an image but hasn't asked a specific question.
+Look at the image carefully and ask them warmly: what would they like to know about it?
+Keep it friendly and short — 1-2 sentences."""
+        history.append({"role": "user", "content": "I uploaded an image"})
+        return call_api(history, system_prompt, image_b64, image_mime), "direct"
+
+    # Image with question
+    if image_b64 and prompt:
+        system_prompt = f"""You are FocusFlow, an expert {st.session_state.exam_goal} tutor for {st.session_state.current_topic}.{original_q_reminder}
+The student has uploaded an image and asked: "{prompt}"
+Look at the image carefully and answer their question clearly.
+Use markdown formatting. Be thorough but concise."""
+        history.append({"role": "user", "content": prompt})
+        return call_api(history, system_prompt, image_b64, image_mime), "direct"
+
+    # Evaluate student's answer to Socratic question
     if msg_type == "evaluate_answer":
         system_prompt = f"""You are FocusFlow, a warm encouraging tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
 
-The AI previously asked: "{st.session_state.last_socratic_question}"
+You previously asked this Socratic question:
+"{st.session_state.last_socratic_question}"
+
 The student answered: "{prompt}"
 
-IMPORTANT: Student may type just "A", "B", "C" or "D" — match against options in the question above.
+IMPORTANT:
+- Student may type just "A", "B", "C", "D" — match against options in the question above
+- Evaluate their answer FIRST before explaining anything
 
-1. If CORRECT: Start with "🎉 That's correct!" then give full explanation.
-2. If PARTIALLY CORRECT: Acknowledge what's right, correct the rest, explain fully.
-3. If INCORRECT: Say "Not quite, but great attempt! 💪", correct kindly, explain clearly.
+If CORRECT:
+- Start with "🎉 That's correct!" and warm praise
+- Then give the full explanation of the concept
+- End with encouragement like "You're doing great! 🚀"
 
-Use markdown formatting. End with an encouraging line.
-Do NOT ask another question."""
+If INCORRECT or PARTIAL:
+- Start with "Not quite, but great attempt! 💪"
+- Gently explain what was wrong
+- Then explain the full concept clearly
+- End with encouragement
+
+Use markdown. Do NOT ask another question at the end."""
 
     elif msg_type == "casual":
         system_prompt = f"""You are FocusFlow, a warm study buddy.{original_q_reminder}
@@ -509,11 +423,11 @@ Respond warmly and conversationally. Keep under 3 sentences. Be encouraging."""
     elif msg_type == "empathetic":
         system_prompt = f"""Student is struggling emotionally.{original_q_reminder}
 Be deeply empathetic. Acknowledge feelings. Share ONE motivational tip.
-Suggest ONE tiny next step related to {st.session_state.current_topic}. Be warm like a caring older sibling."""
+Suggest ONE tiny next step for {st.session_state.current_topic}. Be warm like a caring older sibling."""
 
     elif msg_type == "direct" or crunch_mode:
         system_prompt = f"""You are an expert {st.session_state.exam_goal} tutor for {st.session_state.current_topic}.{original_q_reminder}
-Give a CLEAR STRUCTURED explanation with markdown:
+Give a CLEAR STRUCTURED answer with markdown:
 ## 📋 [Topic]
 ### 🔑 Core Concept
 ### 🧮 Key Formula / Steps
@@ -521,15 +435,29 @@ Give a CLEAR STRUCTURED explanation with markdown:
 ### 💡 Quick Example"""
 
     else:
+        # SOCRATIC — this is the default and USP
         system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
-Ask ONE diagnostic question to check understanding.
-- Multiple choice (A B C D) or short numerical
-- Do NOT give the answer yet
-- End with: "Take your time! If you're stuck, click the ⚡ button below 👇"
-- Keep under 5 lines"""
+
+The student asked: "{prompt}"
+
+Your ONLY job right now: Ask ONE diagnostic multiple choice question to check their understanding BEFORE explaining anything.
+
+Rules:
+- Question must directly relate to what they asked
+- Give 4 options: A) B) C) D)
+- Do NOT explain the concept yet
+- Do NOT give the answer
+- Keep it under 5 lines
+- End EXACTLY with: "Take your time! If you're stuck, click the ⚡ button below 👇"
+
+Example format:
+Quick check before I explain — [question]?
+A) option  B) option  C) option  D) option
+
+Take your time! If you're stuck, click the ⚡ button below 👇"""
 
     history.append({"role": "user", "content": prompt})
-    return call_api(history, system_prompt), msg_type
+    return call_api(history, system_prompt, image_b64, image_mime), msg_type
 
 # ============================================================
 # WELCOME CONTENT
@@ -685,6 +613,22 @@ with st.sidebar:
         st.rerun()
 
 # ============================================================
+# IMAGE UPLOAD — placed ABOVE chat so image is available
+# ============================================================
+with st.expander("📎 Attach Image (Optional)"):
+    uploaded_image = st.file_uploader("Upload problem photo", type=["png", "jpg", "jpeg"])
+    if uploaded_image:
+        st.image(uploaded_image, caption="Preview", use_column_width=True)
+
+# Convert image to base64 if uploaded
+image_b64 = None
+image_mime = None
+if uploaded_image:
+    image_bytes = uploaded_image.read()
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    image_mime = uploaded_image.type
+
+# ============================================================
 # DISPLAY CHAT
 # ============================================================
 current_messages = st.session_state.threads[st.session_state.current_thread]
@@ -700,7 +644,7 @@ if not current_messages:
 I can help you:
 - 🧠 **Explain concepts** — Just ask "{subject_data['example_concept']}"
 - ❓ **Socratic mode** — I'll check your understanding first. Stuck? Click the button!
-- 📸 **Solve from images** — Upload a problem photo
+- 📸 **Solve from images** — Upload a problem photo and ask your question
 - 📝 **Practice questions** — Quick mock tests
 
 **Try asking: "{subject_data['example_question']}"**"""
@@ -712,15 +656,9 @@ for i, message in enumerate(current_messages):
 
     msg_type = message.get("msg_type", "default")
     is_correct = message.get("is_correct", False)
-
-    # Use custom icons
     avatar = "🧠" if message["role"] == "assistant" else "🧑‍🎓"
 
     with st.chat_message(message["role"], avatar=avatar):
-
-        # Clap celebration for correct answers
-        if is_correct and message.get("show_clap"):
-            show_clap_celebration()
 
         if msg_type == "welcome":
             st.markdown(f"<div class='welcome-box'>{message['content']}</div>", unsafe_allow_html=True)
@@ -758,10 +696,11 @@ for i, message in enumerate(current_messages):
                 with st.chat_message("assistant", avatar="🧠"):
                     with st.spinner("Generating cheat sheet..."):
                         answer, _ = get_ai_response(trigger, "direct", message.get("topic", "General"))
-                        current_messages.append({"role": "assistant", "content": answer, "msg_type": "cheat_sheet", "topic": message.get("topic", "General"), "subject": st.session_state.current_topic, "resolved": True})
+                        current_messages.append({"role": "assistant", "content": answer, "msg_type": "cheat_sheet",
+                                                 "topic": message.get("topic", "General"), "subject": st.session_state.current_topic, "resolved": True})
                 st.rerun()
 
-        # SMART FOLLOW-UP BUTTON on last assistant message
+        # SMART FOLLOW-UP BUTTON on last assistant message only
         is_last = (i == len(current_messages) - 1)
         if (message["role"] == "assistant" and is_last and
             msg_type not in ("welcome", "socratic", "stats") and
@@ -775,20 +714,13 @@ for i, message in enumerate(current_messages):
                 with st.chat_message("assistant", avatar="🧠"):
                     with st.spinner("Thinking..."):
                         answer, mt = get_ai_response(followup_prompt, "direct", followup_prompt[:40])
-                        current_messages.append({"role": "assistant", "content": answer, "msg_type": mt, "subject": st.session_state.current_topic, "resolved": True})
+                        current_messages.append({"role": "assistant", "content": answer, "msg_type": mt,
+                                                 "subject": st.session_state.current_topic, "resolved": True})
                         label, prompt_s = generate_followup(answer, st.session_state.current_topic)
                         st.session_state.last_followup_label = label
                         st.session_state.last_followup_prompt = prompt_s
                 st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
-
-# ============================================================
-# IMAGE UPLOAD
-# ============================================================
-with st.expander("📎 Attach Image (Optional)"):
-    uploaded_image = st.file_uploader("Upload problem photo", type=["png", "jpg", "jpeg"])
-    if uploaded_image:
-        st.image(uploaded_image, caption="Preview", use_column_width=True)
 
 # ============================================================
 # PENDING AI REQUESTS
@@ -800,9 +732,9 @@ if st.session_state.pending_ai_request:
         with st.spinner("Thinking..."):
             answer, msg_type = get_ai_response(request["prompt"], request["msg_type"], request["topic"])
             is_correct = False
-            if request["msg_type"] == "evaluate_answer":
-                is_correct = check_if_correct(answer)
-            current_messages.append({"role": "assistant", "content": answer, "msg_type": msg_type, "topic": request["topic"], "subject": st.session_state.current_topic, "resolved": True, "is_correct": is_correct, "show_clap": is_correct})
+            current_messages.append({"role": "assistant", "content": answer, "msg_type": msg_type,
+                                     "topic": request["topic"], "subject": st.session_state.current_topic,
+                                     "resolved": True, "is_correct": is_correct})
             if msg_type == "socratic":
                 st.session_state.awaiting_answer = True
                 st.session_state.last_socratic_question = answer
@@ -815,19 +747,25 @@ if st.session_state.pending_ai_request:
 # ============================================================
 # CHAT INPUT
 # ============================================================
-if prompt := st.chat_input("Ask a question..."):
+if prompt := st.chat_input("Ask a question... (or upload an image above first)"):
     today = date.today()
     if st.session_state.last_study_date != today:
         st.session_state.study_streak += 1
         st.session_state.last_study_date = today
 
-    current_messages.append({"role": "user", "content": prompt, "msg_type": "user_question"})
+    current_messages.append({"role": "user", "content": prompt if prompt else "📷 [Image uploaded]", "msg_type": "user_question"})
 
+    # Pin original question
     user_msgs = [m for m in current_messages if m["role"] == "user" and not m.get("hidden")]
     if len(user_msgs) == 1:
         st.session_state.original_question = prompt
 
-    if st.session_state.awaiting_answer and st.session_state.last_socratic_question:
+    # Determine intent
+    if image_b64:
+        # Image takes priority — handle both scenarios inside get_ai_response
+        intent = "image"
+        topic_tag = "Image question"
+    elif st.session_state.awaiting_answer and st.session_state.last_socratic_question:
         intent = "evaluate_answer"
         topic_tag = st.session_state.last_socratic_question[:40]
         st.session_state.awaiting_answer = False
@@ -842,7 +780,7 @@ if prompt := st.chat_input("Ask a question..."):
 
     with st.chat_message("assistant", avatar="🧠"):
         with st.spinner("Thinking..."):
-            answer, msg_type = get_ai_response(prompt, intent, topic_tag)
+            answer, msg_type = get_ai_response(prompt, intent, topic_tag, image_b64, image_mime)
 
             is_correct = False
             if intent == "evaluate_answer":
@@ -860,15 +798,12 @@ if prompt := st.chat_input("Ask a question..."):
                 st.session_state.last_followup_label = label
                 st.session_state.last_followup_prompt = prompt_s
 
+            final_msg_type = "evaluate_answer" if intent == "evaluate_answer" else msg_type
             current_messages.append({
-                "role": "assistant",
-                "content": answer,
-                "msg_type": "evaluate_answer" if intent == "evaluate_answer" else msg_type,
-                "topic": topic_tag,
+                "role": "assistant", "content": answer,
+                "msg_type": final_msg_type, "topic": topic_tag,
                 "subject": st.session_state.current_topic,
-                "resolved": True,
-                "is_correct": is_correct,
-                "show_clap": False
+                "resolved": True, "is_correct": is_correct
             })
     st.rerun()
 
@@ -915,5 +850,9 @@ with qa_col4:
             if not msg.get("hidden"):
                 prefix = "🧑‍🎓 You" if msg["role"] == "user" else "🧠 FocusFlow"
                 chat_text.append(f"{prefix}:\n{msg['content']}")
-        export_text = f"FocusFlow Chat Export\n{'='*50}\nExam: {st.session_state.exam_goal}\nSubject: {st.session_state.current_topic}\nDate: {date.today()}\n{'='*50}\n\n" + "\n\n---\n\n".join(chat_text)
-        st.download_button("📥 Download Chat", export_text, file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt", mime="text/plain", use_container_width=True)
+        export_text = (f"FocusFlow Chat Export\n{'='*50}\nExam: {st.session_state.exam_goal}\n"
+                       f"Subject: {st.session_state.current_topic}\nDate: {date.today()}\n{'='*50}\n\n"
+                       + "\n\n---\n\n".join(chat_text))
+        st.download_button("📥 Download Chat", export_text,
+                           file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt",
+                           mime="text/plain", use_container_width=True)
