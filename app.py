@@ -678,20 +678,26 @@ for i, message in enumerate(current_messages):
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
-# IMAGE UPLOAD — placed BELOW chat, ABOVE input box
+# IMAGE UPLOAD — clean section, no expander
 # ============================================================
 uploaded_image = None
 image_b64 = None
 image_mime = None
 
-with st.expander("📎 Attach Image (Optional)"):
-    uploaded_file = st.file_uploader("Upload problem photo", type=["png", "jpg", "jpeg"])
-    if uploaded_file:
-        st.image(uploaded_file, caption="Preview", use_column_width=True)
-        image_bytes = uploaded_file.read()
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        image_mime = uploaded_file.type
-        uploaded_image = uploaded_file
+st.divider()
+st.markdown("##### 📎 Attach Image (Optional)")
+uploaded_file = st.file_uploader(
+    "Upload a photo of your problem",
+    type=["png", "jpg", "jpeg"],
+    label_visibility="collapsed"
+)
+if uploaded_file:
+    st.image(uploaded_file, caption="📷 Image ready — now ask your question below!", use_column_width=True)
+    image_bytes = uploaded_file.read()
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    image_mime = uploaded_file.type
+    uploaded_image = uploaded_file
+st.divider()
 
 # ============================================================
 # PENDING AI REQUESTS
