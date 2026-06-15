@@ -218,6 +218,46 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
     provider = api_config["provider"]
     model = api_config["model"]
     try:
+        # ── IMAGE REQUEST: always use OpenRouter vision model ──
+        if image_b64:
+            try:
+                openrouter_key = st.secrets["OPENROUTER_API_KEY"]
+            except:
+                return "⚠️ Image support requires an OpenRouter API key in Streamlit secrets."
+
+            last_text = messages_list[-1]["content"] if messages_list and messages_list[-1]["role"] == "user" else "What do you see in this image?"
+            msgs = [{"role": "system", "content": system_prompt}] + messages_list
+            msgs[-1] = {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+                    {"type": "text", "text": last_text}
+                ]
+            }
+            payload = {
+                "model": "google/gemini-2.0-flash-exp:free",
+                "messages": msgs,
+                "temperature": 0.7,
+                "max_tokens": 1500
+            }
+            headers = {
+                "Authorization": f"Bearer {openrouter_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://focusflow.app",
+                "X-Title": "FocusFlow"
+            }
+            try:
+                r = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    json=payload, headers=headers, timeout=45
+                ).json()
+                if 'choices' in r and r['choices']:
+                    return r['choices'][0]['message']['content']
+                return f"⚠️ Image Error: {r.get('error', {}).get('message', 'Could not process image.')}"
+            except Exception as e:
+                return f"❌ Image Error: {str(e)}"
+
+        # ── TEXT REQUEST: use configured provider ──
         if provider == "groq":
             msgs = [{"role": "system", "content": system_prompt}] + messages_list
             payload = {"model": model, "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
@@ -229,14 +269,7 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
 
         elif provider == "openrouter":
             msgs = [{"role": "system", "content": system_prompt}] + messages_list
-            if image_b64:
-                last_text = msgs[-1]["content"] if msgs[-1]["role"] == "user" else "What do you see?"
-                msgs[-1] = {"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-                    {"type": "text", "text": last_text}
-                ]}
-            payload = {"model": "google/gemini-2.0-flash-exp:free" if image_b64 else model,
-                       "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
+            payload = {"model": model, "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
             headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json",
                        "HTTP-Referer": "https://focusflow.app", "X-Title": "FocusFlow"}
             r = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
@@ -251,17 +284,12 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
             for m in all_msgs:
                 role = "user" if m["role"] in ("user", "system") else "model"
                 google_msgs.append({"role": role, "parts": [{"text": m["content"]}]})
-            if image_b64:
-                last_text = messages_list[-1]["content"] if messages_list and messages_list[-1]["role"] == "user" else "What do you see?"
-                google_msgs[-1] = {"role": "user", "parts": [
-                    {"inline_data": {"mime_type": image_mime, "data": image_b64}},
-                    {"text": last_text}
-                ]}
             payload = {"contents": google_msgs, "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500}}
             r = requests.post(url, json=payload, timeout=30).json()
             if 'candidates' in r and r['candidates']:
                 return r['candidates'][0]['content']['parts'][0]['text']
             return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
+
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
