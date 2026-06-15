@@ -204,6 +204,8 @@ defaults = {
     "original_question": None,
     "last_followup_label": None,
     "last_followup_prompt": None,
+    "saved_image_b64": None,
+    "saved_image_mime": None,
 }
 for key, value in defaults.items():
     if key not in st.session_state:
@@ -678,12 +680,8 @@ for i, message in enumerate(current_messages):
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
-# IMAGE UPLOAD — clean section, no expander
+# IMAGE UPLOAD — clean section, saved to session state
 # ============================================================
-uploaded_image = None
-image_b64 = None
-image_mime = None
-
 st.divider()
 st.markdown("##### 📎 Attach Image (Optional)")
 uploaded_file = st.file_uploader(
@@ -692,11 +690,14 @@ uploaded_file = st.file_uploader(
     label_visibility="collapsed"
 )
 if uploaded_file:
-    st.image(uploaded_file, caption="📷 Image ready — now ask your question below!", use_column_width=True)
     image_bytes = uploaded_file.read()
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-    image_mime = uploaded_file.type
-    uploaded_image = uploaded_file
+    st.session_state.saved_image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    st.session_state.saved_image_mime = uploaded_file.type
+    st.image(uploaded_file, caption="📷 Image ready — now ask your question below!", use_column_width=True)
+
+# Use saved image from session state
+image_b64 = st.session_state.saved_image_b64
+image_mime = st.session_state.saved_image_mime
 st.divider()
 
 # ============================================================
@@ -756,6 +757,11 @@ if prompt := st.chat_input("Ask a question... (or upload an image above first)")
     with st.chat_message("assistant", avatar="🧠"):
         with st.spinner("Thinking..."):
             answer, msg_type = get_ai_response(prompt, intent, topic_tag, image_b64, image_mime)
+
+            # Clear image from session state after it's been used
+            if image_b64:
+                st.session_state.saved_image_b64 = None
+                st.session_state.saved_image_mime = None
 
             is_correct = False
             if intent == "evaluate_answer":
