@@ -12,13 +12,10 @@ st.set_page_config(page_title="FocusFlow", page_icon="⚡", layout="centered")
 
 st.markdown("""
 <style>
-    /* ── ORIGINAL LIGHT THEME ── */
     .stApp {background-color: #FFF9E6;}
     .stButton>button {background-color: #FF6600; color: white; border-radius: 20px; font-weight: 600;}
     .stChatMessage {border-radius: 15px;}
-
     * { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
-
     .cheat-sheet-box {
         background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
         border-left: 4px solid #FF6600;
@@ -109,14 +106,13 @@ st.markdown("""
         padding: 4px 14px !important;
         margin-top: 6px !important;
     }
-    .streak-flame { font-size: 24px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("⚡ FocusFlow")
 
 # ============================================================
-# CLAP SOUND via Web Audio API
+# CLAP SOUND
 # ============================================================
 CLAP_JS = """
 <script>
@@ -214,25 +210,14 @@ for key, value in defaults.items():
         st.session_state[key] = value
 
 # ============================================================
-# CORE API CALL — supports text + optional image
+# CORE API CALL
 # ============================================================
 def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
     provider = api_config["provider"]
     model = api_config["model"]
     try:
         if provider == "groq":
-            # Groq supports vision on llava models; for text-only models attach image as text note
             msgs = [{"role": "system", "content": system_prompt}] + messages_list
-            if image_b64:
-                # Add image as last user message with vision content
-                msgs.append({
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-                        {"type": "text", "text": msgs[-1]["content"] if msgs[-1]["role"] == "user" else "What do you see?"}
-                    ]
-                })
-                msgs = msgs[:-2] + [msgs[-1]]  # replace last user msg with vision msg
             payload = {"model": model, "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
             headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json"}
             r = requests.post(api_config["url"], json=payload, headers=headers, timeout=30).json()
@@ -243,14 +228,11 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
         elif provider == "openrouter":
             msgs = [{"role": "system", "content": system_prompt}] + messages_list
             if image_b64:
-                last_user_content = msgs[-1]["content"] if msgs[-1]["role"] == "user" else "What do you see in this image?"
-                msgs[-1] = {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-                        {"type": "text", "text": last_user_content}
-                    ]
-                }
+                last_text = msgs[-1]["content"] if msgs[-1]["role"] == "user" else "What do you see?"
+                msgs[-1] = {"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+                    {"type": "text", "text": last_text}
+                ]}
             payload = {"model": "google/gemini-2.0-flash-exp:free" if image_b64 else model,
                        "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
             headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json",
@@ -261,7 +243,6 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
             return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
 
         else:
-            # Google Gemini — supports vision natively
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
             google_msgs = []
             all_msgs = [{"role": "system", "content": system_prompt}] + messages_list
@@ -269,14 +250,11 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
                 role = "user" if m["role"] in ("user", "system") else "model"
                 google_msgs.append({"role": role, "parts": [{"text": m["content"]}]})
             if image_b64:
-                last_user_text = messages_list[-1]["content"] if messages_list and messages_list[-1]["role"] == "user" else "What do you see?"
-                google_msgs[-1] = {
-                    "role": "user",
-                    "parts": [
-                        {"inline_data": {"mime_type": image_mime, "data": image_b64}},
-                        {"text": last_user_text}
-                    ]
-                }
+                last_text = messages_list[-1]["content"] if messages_list and messages_list[-1]["role"] == "user" else "What do you see?"
+                google_msgs[-1] = {"role": "user", "parts": [
+                    {"inline_data": {"mime_type": image_mime, "data": image_b64}},
+                    {"text": last_text}
+                ]}
             payload = {"contents": google_msgs, "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500}}
             r = requests.post(url, json=payload, timeout=30).json()
             if 'candidates' in r and r['candidates']:
@@ -295,7 +273,6 @@ Rules:
 - Specific to {subject}, relevant for {exam_goal}
 - Mix of MCQ and short answer
 - Clearly numbered, no answers included
-- Keep each question concise
 
 Format EXACTLY like this:
 **🎯 Today's Challenge: {subject} — 5 Questions**
@@ -316,7 +293,7 @@ A) option  B) option  C) option  D) option
     return call_api([{"role": "user", "content": f"Generate 5 {subject} questions for {exam_goal}"}], system_prompt)
 
 # ============================================================
-# GENERATE SMART FOLLOW-UP BUTTON
+# GENERATE SMART FOLLOW-UP
 # ============================================================
 def generate_followup(last_ai_reply, subject):
     system_prompt = """Based on the AI tutor's last reply, suggest ONE short follow-up action.
@@ -353,13 +330,12 @@ def check_if_correct(ai_response: str) -> bool:
     return any(p in ai_response.lower() for p in positive)
 
 # ============================================================
-# MAIN AI RESPONSE — full history + pinned original Q + image support
+# MAIN AI RESPONSE
 # ============================================================
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str, image_b64=None, image_mime=None):
     days_left = (st.session_state.test_date - date.today()).days
     crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
 
-    # Build history
     current_messages = st.session_state.threads[st.session_state.current_thread]
     history = []
     for msg in current_messages:
@@ -375,22 +351,20 @@ def get_ai_response(prompt: str, msg_type: str, topic_tag: str, image_b64=None, 
     # Image with no question
     if image_b64 and (not prompt or prompt.strip() == ""):
         system_prompt = f"""You are FocusFlow, a helpful tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
-The student has uploaded an image but hasn't asked a specific question.
-Look at the image carefully and ask them warmly: what would they like to know about it?
-Keep it friendly and short — 1-2 sentences."""
+The student uploaded an image but hasn't asked anything specific.
+Look at the image and warmly ask what they'd like to know about it. Keep it to 1-2 sentences."""
         history.append({"role": "user", "content": "I uploaded an image"})
         return call_api(history, system_prompt, image_b64, image_mime), "direct"
 
     # Image with question
     if image_b64 and prompt:
         system_prompt = f"""You are FocusFlow, an expert {st.session_state.exam_goal} tutor for {st.session_state.current_topic}.{original_q_reminder}
-The student has uploaded an image and asked: "{prompt}"
-Look at the image carefully and answer their question clearly.
-Use markdown formatting. Be thorough but concise."""
+The student uploaded an image and asked: "{prompt}"
+Look at the image carefully and answer their question clearly using markdown."""
         history.append({"role": "user", "content": prompt})
         return call_api(history, system_prompt, image_b64, image_mime), "direct"
 
-    # Evaluate student's answer to Socratic question
+    # Evaluate answer
     if msg_type == "evaluate_answer":
         system_prompt = f"""You are FocusFlow, a warm encouraging tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
 
@@ -399,13 +373,11 @@ You previously asked this Socratic question:
 
 The student answered: "{prompt}"
 
-IMPORTANT:
-- Student may type just "A", "B", "C", "D" — match against options in the question above
-- Evaluate their answer FIRST before explaining anything
+IMPORTANT: Student may type just "A", "B", "C", "D" — match against the options in the question above.
 
 If CORRECT:
 - Start with "🎉 That's correct!" and warm praise
-- Then give the full explanation of the concept
+- Then give full explanation of the concept
 - End with encouragement like "You're doing great! 🚀"
 
 If INCORRECT or PARTIAL:
@@ -414,7 +386,7 @@ If INCORRECT or PARTIAL:
 - Then explain the full concept clearly
 - End with encouragement
 
-Use markdown. Do NOT ask another question at the end."""
+Use markdown. Do NOT ask another question."""
 
     elif msg_type == "casual":
         system_prompt = f"""You are FocusFlow, a warm study buddy.{original_q_reminder}
@@ -435,22 +407,21 @@ Give a CLEAR STRUCTURED answer with markdown:
 ### 💡 Quick Example"""
 
     else:
-        # SOCRATIC — this is the default and USP
         system_prompt = f"""You are a Socratic tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.{original_q_reminder}
 
 The student asked: "{prompt}"
 
-Your ONLY job right now: Ask ONE diagnostic multiple choice question to check their understanding BEFORE explaining anything.
+Your ONLY job: Ask ONE diagnostic multiple choice question to check their understanding BEFORE explaining anything.
 
 Rules:
-- Question must directly relate to what they asked
+- Directly related to what they asked
 - Give 4 options: A) B) C) D)
 - Do NOT explain the concept yet
 - Do NOT give the answer
 - Keep it under 5 lines
 - End EXACTLY with: "Take your time! If you're stuck, click the ⚡ button below 👇"
 
-Example format:
+Format:
 Quick check before I explain — [question]?
 A) option  B) option  C) option  D) option
 
@@ -552,7 +523,7 @@ with st.sidebar:
 
     st.divider()
 
-    # ── DAILY CHALLENGE ──
+    # DAILY CHALLENGE
     st.markdown("### 🎯 Daily Challenge")
     today = date.today()
 
@@ -613,22 +584,6 @@ with st.sidebar:
         st.rerun()
 
 # ============================================================
-# IMAGE UPLOAD — placed ABOVE chat so image is available
-# ============================================================
-with st.expander("📎 Attach Image (Optional)"):
-    uploaded_image = st.file_uploader("Upload problem photo", type=["png", "jpg", "jpeg"])
-    if uploaded_image:
-        st.image(uploaded_image, caption="Preview", use_column_width=True)
-
-# Convert image to base64 if uploaded
-image_b64 = None
-image_mime = None
-if uploaded_image:
-    image_bytes = uploaded_image.read()
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-    image_mime = uploaded_image.type
-
-# ============================================================
 # DISPLAY CHAT
 # ============================================================
 current_messages = st.session_state.threads[st.session_state.current_thread]
@@ -644,7 +599,7 @@ if not current_messages:
 I can help you:
 - 🧠 **Explain concepts** — Just ask "{subject_data['example_concept']}"
 - ❓ **Socratic mode** — I'll check your understanding first. Stuck? Click the button!
-- 📸 **Solve from images** — Upload a problem photo and ask your question
+- 📸 **Solve from images** — Upload a photo below and ask your question
 - 📝 **Practice questions** — Quick mock tests
 
 **Try asking: "{subject_data['example_question']}"**"""
@@ -659,7 +614,6 @@ for i, message in enumerate(current_messages):
     avatar = "🧠" if message["role"] == "assistant" else "🧑‍🎓"
 
     with st.chat_message(message["role"], avatar=avatar):
-
         if msg_type == "welcome":
             st.markdown(f"<div class='welcome-box'>{message['content']}</div>", unsafe_allow_html=True)
         elif msg_type == "cheat_sheet":
@@ -697,10 +651,11 @@ for i, message in enumerate(current_messages):
                     with st.spinner("Generating cheat sheet..."):
                         answer, _ = get_ai_response(trigger, "direct", message.get("topic", "General"))
                         current_messages.append({"role": "assistant", "content": answer, "msg_type": "cheat_sheet",
-                                                 "topic": message.get("topic", "General"), "subject": st.session_state.current_topic, "resolved": True})
+                                                 "topic": message.get("topic", "General"),
+                                                 "subject": st.session_state.current_topic, "resolved": True})
                 st.rerun()
 
-        # SMART FOLLOW-UP BUTTON on last assistant message only
+        # SMART FOLLOW-UP BUTTON
         is_last = (i == len(current_messages) - 1)
         if (message["role"] == "assistant" and is_last and
             msg_type not in ("welcome", "socratic", "stats") and
@@ -723,6 +678,22 @@ for i, message in enumerate(current_messages):
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
+# IMAGE UPLOAD — placed BELOW chat, ABOVE input box
+# ============================================================
+uploaded_image = None
+image_b64 = None
+image_mime = None
+
+with st.expander("📎 Attach Image (Optional)"):
+    uploaded_file = st.file_uploader("Upload problem photo", type=["png", "jpg", "jpeg"])
+    if uploaded_file:
+        st.image(uploaded_file, caption="Preview", use_column_width=True)
+        image_bytes = uploaded_file.read()
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        image_mime = uploaded_file.type
+        uploaded_image = uploaded_file
+
+# ============================================================
 # PENDING AI REQUESTS
 # ============================================================
 if st.session_state.pending_ai_request:
@@ -731,10 +702,9 @@ if st.session_state.pending_ai_request:
     with st.chat_message("assistant", avatar="🧠"):
         with st.spinner("Thinking..."):
             answer, msg_type = get_ai_response(request["prompt"], request["msg_type"], request["topic"])
-            is_correct = False
             current_messages.append({"role": "assistant", "content": answer, "msg_type": msg_type,
                                      "topic": request["topic"], "subject": st.session_state.current_topic,
-                                     "resolved": True, "is_correct": is_correct})
+                                     "resolved": True, "is_correct": False})
             if msg_type == "socratic":
                 st.session_state.awaiting_answer = True
                 st.session_state.last_socratic_question = answer
@@ -753,16 +723,15 @@ if prompt := st.chat_input("Ask a question... (or upload an image above first)")
         st.session_state.study_streak += 1
         st.session_state.last_study_date = today
 
-    current_messages.append({"role": "user", "content": prompt if prompt else "📷 [Image uploaded]", "msg_type": "user_question"})
+    display_text = prompt if prompt else "📷 [Image uploaded]"
+    current_messages.append({"role": "user", "content": display_text, "msg_type": "user_question"})
 
-    # Pin original question
     user_msgs = [m for m in current_messages if m["role"] == "user" and not m.get("hidden")]
     if len(user_msgs) == 1:
         st.session_state.original_question = prompt
 
     # Determine intent
     if image_b64:
-        # Image takes priority — handle both scenarios inside get_ai_response
         intent = "image"
         topic_tag = "Image question"
     elif st.session_state.awaiting_answer and st.session_state.last_socratic_question:
