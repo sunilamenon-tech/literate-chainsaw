@@ -235,7 +235,7 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
                 ]
             }
             payload = {
-                "model": "google/gemini-2.0-flash-exp:free",
+                "model": "google/gemini-2.5-flash-preview",
                 "messages": msgs,
                 "temperature": 0.7,
                 "max_tokens": 1500
@@ -253,7 +253,8 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
                 ).json()
                 if 'choices' in r and r['choices']:
                     return r['choices'][0]['message']['content']
-                return f"⚠️ Image Error: {r.get('error', {}).get('message', 'Could not process image.')}"
+                error_msg = r.get('error', {}).get('message', str(r))
+                return f"⚠️ Image Error: {error_msg}"
             except Exception as e:
                 return f"❌ Image Error: {str(e)}"
 
