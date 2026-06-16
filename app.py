@@ -465,7 +465,7 @@ Take your time! If you're stuck, click the ⚡ button below 👇"""
 # WELCOME CONTENT
 # ============================================================
 SUBJECT_CONTENT = {
-    "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?" "what is the difference between speed and velocity"},
+    "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?" "What is the difference between speed and velocity"},
     "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?" "Why are Noble gases inert?"},
     "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?" "How do you determine the probability of independent events?"},
     "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?" "How does DNA replication ensure genetic continuity?"},
