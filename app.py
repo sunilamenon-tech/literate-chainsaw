@@ -709,7 +709,7 @@ for i, message in enumerate(current_messages):
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
-# IMAGE UPLOAD — clean section, saved to session state
+# IMAGE UPLOAD — persistent across reruns
 # ============================================================
 st.divider()
 st.markdown("##### 📎 Attach Image (Optional)")
@@ -718,11 +718,23 @@ uploaded_file = st.file_uploader(
     type=["png", "jpg", "jpeg"],
     label_visibility="collapsed"
 )
-if uploaded_file:
+
+# Only update session state when a NEW file is uploaded
+if uploaded_file is not None:
     image_bytes = uploaded_file.read()
     st.session_state.saved_image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     st.session_state.saved_image_mime = uploaded_file.type
-    st.image(uploaded_file, caption="📷 Image ready — now ask your question below!", use_column_width=True)
+
+# Show indicator if image is saved in session state
+if st.session_state.saved_image_b64:
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.success("📷 Image ready! Now type your question below and press Enter.")
+    with col2:
+        if st.button("❌ Remove"):
+            st.session_state.saved_image_b64 = None
+            st.session_state.saved_image_mime = None
+            st.rerun()
 
 # Use saved image from session state
 image_b64 = st.session_state.saved_image_b64
