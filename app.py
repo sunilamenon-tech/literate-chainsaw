@@ -396,7 +396,7 @@ Format:
 Quick check before I explain — [question]?
 A) option  B) option  C) option  D) option
 
-Take your time! If you're stuck, click the ⚡ button below 👇"""
+Take your time! If you're stuck, click the 'Cheat Sheet' button below 👇"""
 
     history.append({"role": "user", "content": prompt})
     return call_api(history, system_prompt), msg_type
