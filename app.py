@@ -466,12 +466,12 @@ Take your time! If you're stuck, click the ⚡ button below 👇"""
 # ============================================================
 SUBJECT_CONTENT = {
     "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?" "what is the difference between speed and velocity"},
-    "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?"},
-    "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?"},
-    "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?"},
-    "English": {"example_concept": "Explain the theme of 'The Road Not Taken'", "example_question": "What is the theme of 'The Road Not Taken'?"},
-    "History": {"example_concept": "Explain the causes of World War I", "example_question": "What were the main causes of World War I?"},
-    "Other": {"example_concept": "Explain the Pythagorean Theorem", "example_question": "What is the Pythagorean Theorem?"}
+    "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?" "Why are Noble gases inert?"},
+    "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?" "How do you determine the probability of independent events?"},
+    "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?" "How does DNA replication ensure genetic continuity?"},
+    "English": {"example_concept": "Explain the theme of 'The Road Not Taken'", "example_question": "What is the theme of 'The Road Not Taken'?" "How do you structure an analytical essay?"},
+    "History": {"example_concept": "Explain the causes of World War I", "example_question": "What were the main causes of World War I?" "How did nationalism change the map of Europe?"},
+    "Other": {"example_concept": "Explain the Pythagorean Theorem", "example_question": "What is the Pythagorean Theorem?" "How do I create a study schedule for my exams?"}
 }
 
 # ============================================================
@@ -633,7 +633,7 @@ I can help you:
 - 📸 **Solve from images** — Upload a photo below and ask your question
 - 📝 **Practice questions** — Quick mock tests
 
-**Try asking: "{subject_data['example_question']}"**"""
+**Try asking something like: "{subject_data['example_question']}"**"""
     current_messages.append({"role": "assistant", "content": welcome, "msg_type": "welcome"})
 
 for i, message in enumerate(current_messages):
