@@ -235,7 +235,7 @@ def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
                 ]
             }
             payload = {
-                "model": "google/gemini-2.5-flash-preview",
+                "model": "google/gemini-2.0-flash-001",
                 "messages": msgs,
                 "temperature": 0.7,
                 "max_tokens": 1500
