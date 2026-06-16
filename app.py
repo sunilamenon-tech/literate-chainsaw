@@ -568,7 +568,18 @@ days_left = (st.session_state.test_date - date.today()).days
 
 if not current_messages:
     days_info = f"**{days_left} days** until your {st.session_state.exam_goal} exam!" if st.session_state.has_specific_date else "Learning at your own pace — no pressure!"
-    subject_data = SUBJECT_CONTENT.get(st.session_state.current_topic, SUBJECT_CONTENT["Other"])
+   SUBJECT_CONTENT = {
+    "Physics": {"example_concept": "Explain Newton's Laws", "example_question": "What is Newton's First Law?"},
+    "Chemistry": {"example_concept": "Explain the Periodic Table", "example_question": "Why do elements in the same group react similarly?"},
+    "Maths": {"example_concept": "Explain Calculus", "example_question": "What is a derivative?"},
+    "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "How does photosynthesis work?"},
+    "English": {"example_concept": "Analyze a poem", "example_question": "What is the theme of this poem?"},
+    "History": {"example_concept": "Explain World War I", "example_question": "What caused WWI?"},
+    "Other": {"example_concept": "your topic", "example_question": "What are you studying?"}
+}
+
+# Use .get() to prevent KeyError crashes
+subject_data = SUBJECT_CONTENT.get(st.session_state.current_topic, SUBJECT_CONTENT["Other"])
     welcome = f"""👋 Hey! I'm your FocusFlow coach.
 
 **Current Setup:** {st.session_state.exam_goal} | {st.session_state.current_topic} | {days_info}
