@@ -404,14 +404,20 @@ Take your time! If you're stuck, click the 'Cheat Sheet' button below 👇"""
 # ============================================================
 # WELCOME CONTENT
 # ============================================================
-SUBJECT_CONTENT = {
-    "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?"},
-    "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?"},
-    "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?"},
-    "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?"},
-    "English": {"example_concept": "Explain the theme of 'The Road Not Taken'", "example_question": "What is the theme of 'The Road Not Taken'?"},
-    "History": {"example_concept": "Explain the causes of World War I", "example_question": "What were the main causes of World War I?"},
-    "Other": {"example_concept": "Explain the Pythagorean Theorem", "example_question": "What is the Pythagorean Theorem?"}
+SUBJECT_CONTENT = = {
+    "Physics": {
+        "concepts": ["Newton's Laws", "Thermodynamics", "Optics"],
+        "starters": ["What is Newton's First Law?", "Explain how a lens works", "What is the principle of conservation of energy?"]
+    },
+    "Chemistry": {
+        "concepts": ["Periodic Table", "Chemical Bonding", "Organic Chemistry"],
+        "starters": ["Why are Noble gases inert?", "Explain covalent bonding", "How do I balance a redox reaction?"]
+    },
+    "History": {
+        "concepts": ["World War I", "French Revolution", "Industrial Revolution"],
+        "starters": ["What were the main causes of WWI?", "What triggered the French Revolution?", "How did the steam engine change the world?"]
+    },
+    # ... add as many as you like!
 }
 
 # ============================================================
