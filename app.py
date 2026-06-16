@@ -390,7 +390,7 @@ Rules:
 - Do NOT explain the concept yet
 - Do NOT give the answer
 - Keep it under 5 lines
-- End EXACTLY with: "Take your time! If you're stuck, click the ⚡ button below 👇"
+- End EXACTLY with: "Take your time! If you're stuck, click the 'Cheat Sheet' button below 👇"
 
 Format:
 Quick check before I explain — [question]?
