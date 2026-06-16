@@ -404,7 +404,7 @@ Take your time! If you're stuck, click the 'Cheat Sheet' button below 👇"""
 # ============================================================
 # WELCOME CONTENT
 # ============================================================
-SUBJECT_CONTENT = = {
+SUBJECT_CONTENT = {
     "Physics": {
         "concepts": ["Newton's Laws", "Thermodynamics", "Optics"],
         "starters": ["What is Newton's First Law?", "Explain how a lens works", "What is the principle of conservation of energy?"]
