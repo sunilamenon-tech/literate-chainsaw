@@ -465,7 +465,15 @@ Take your time! If you're stuck, click the ⚡ button below 👇"""
 # WELCOME CONTENT
 # ============================================================
 SUBJECT_CONTENT = {
-    "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?"},
+    "Physics": {
+        "concepts": ["Optics", "Electromagnetism", "Kinematics"],
+        "starters": [
+            "What is the difference between speed and velocity?",
+            "How does refraction occur in a glass slab?",
+            "Can you explain the Law of Conservation of Energy?",
+            "What is the significance of the Universal Law of Gravitation?"
+        ]
+    },
     "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?"},
     "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?"},
     "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?"},
