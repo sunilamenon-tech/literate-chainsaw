@@ -304,7 +304,7 @@ def detect_intent(prompt: str) -> str:
         return "direct"
     if any(s in p for s in ["hi", "hello", "hey", "thanks", "thank you", "bye", "good morning", "good night"]) and len(p.split()) < 6:
         return "casual"
-    if any(s in p for s in ["hate", "difficult", "hard", "don't understand", "confused", "stuck", "panic", "scared", "anxious", "i can't", "lost", "frustrated"]):
+    if any(s in p for s in ["hate", "panic", "scared", "anxious", "frustrated"]):
         return "empathetic"
     return "socratic"
 
