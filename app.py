@@ -878,3 +878,5 @@ with qa_col4:
         st.download_button("📥 Download Chat", export_text,
                            file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt",
                            mime="text/plain", use_container_width=True)
+
+
