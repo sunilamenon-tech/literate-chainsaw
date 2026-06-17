@@ -3,7 +3,6 @@ import requests
 from datetime import date, datetime, timedelta
 import random
 import json
-import base64
 
 # ============================================================
 # PAGE CONFIG
@@ -204,8 +203,6 @@ defaults = {
     "original_question": None,
     "last_followup_label": None,
     "last_followup_prompt": None,
-    "saved_image_b64": None,
-    "saved_image_mime": None,
 }
 for key, value in defaults.items():
     if key not in st.session_state:
@@ -214,51 +211,10 @@ for key, value in defaults.items():
 # ============================================================
 # CORE API CALL
 # ============================================================
-def call_api(messages_list, system_prompt, image_b64=None, image_mime=None):
+def call_api(messages_list, system_prompt):
     provider = api_config["provider"]
     model = api_config["model"]
     try:
-        # ── IMAGE REQUEST: always use OpenRouter vision model ──
-        if image_b64:
-            try:
-                openrouter_key = st.secrets["OPENROUTER_API_KEY"]
-            except:
-                return "⚠️ Image support requires an OpenRouter API key in Streamlit secrets."
-
-            last_text = messages_list[-1]["content"] if messages_list and messages_list[-1]["role"] == "user" else "What do you see in this image?"
-            msgs = [{"role": "system", "content": system_prompt}] + messages_list
-            msgs[-1] = {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-                    {"type": "text", "text": last_text}
-                ]
-            }
-            payload = {
-                "model": "google/gemini-2.5-flash-preview-09-2025",
-                "messages": msgs,
-                "temperature": 0.7,
-                "max_tokens": 1500
-            }
-            headers = {
-                "Authorization": f"Bearer {openrouter_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://focusflow.app",
-                "X-Title": "FocusFlow"
-            }
-            try:
-                r = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    json=payload, headers=headers, timeout=45
-                ).json()
-                if 'choices' in r and r['choices']:
-                    return r['choices'][0]['message']['content']
-                error_msg = r.get('error', {}).get('message', str(r))
-                return f"⚠️ Image Error: {error_msg}"
-            except Exception as e:
-                return f"❌ Image Error: {str(e)}"
-
-        # ── TEXT REQUEST: use configured provider ──
         if provider == "groq":
             msgs = [{"role": "system", "content": system_prompt}] + messages_list
             payload = {"model": model, "messages": msgs, "temperature": 0.7, "max_tokens": 1500}
@@ -363,7 +319,7 @@ def check_if_correct(ai_response: str) -> bool:
 # ============================================================
 # MAIN AI RESPONSE
 # ============================================================
-def get_ai_response(prompt: str, msg_type: str, topic_tag: str, image_b64=None, image_mime=None):
+def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
     days_left = (st.session_state.test_date - date.today()).days
     crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
 
@@ -378,22 +334,6 @@ def get_ai_response(prompt: str, msg_type: str, topic_tag: str, image_b64=None, 
     original_q_reminder = ""
     if st.session_state.original_question:
         original_q_reminder = f"\n\nIMPORTANT: The student's ORIGINAL question was: \"{st.session_state.original_question}\". Always keep this in mind."
-
-    # Image with no question
-    if image_b64 and (not prompt or prompt.strip() == ""):
-        system_prompt = f"""You are FocusFlow, a helpful tutor for {st.session_state.exam_goal} {st.session_state.current_topic}.
-The student uploaded an image but hasn't asked anything specific.
-Look at the image and warmly ask what they'd like to know about it. Keep it to 1-2 sentences."""
-        history.append({"role": "user", "content": "I uploaded an image"})
-        return call_api(history, system_prompt, image_b64, image_mime), "direct"
-
-    # Image with question
-    if image_b64 and prompt:
-        system_prompt = f"""You are FocusFlow, an expert {st.session_state.exam_goal} tutor for {st.session_state.current_topic}.{original_q_reminder}
-The student uploaded an image and asked: "{prompt}"
-Look at the image carefully and answer their question clearly using markdown."""
-        history.append({"role": "user", "content": prompt})
-        return call_api(history, system_prompt, image_b64, image_mime), "direct"
 
     # Evaluate answer
     if msg_type == "evaluate_answer":
@@ -459,7 +399,7 @@ A) option  B) option  C) option  D) option
 Take your time! If you're stuck, click the ⚡ button below 👇"""
 
     history.append({"role": "user", "content": prompt})
-    return call_api(history, system_prompt, image_b64, image_mime), msg_type
+    return call_api(history, system_prompt), msg_type
 
 # ============================================================
 # WELCOME CONTENT
@@ -630,7 +570,6 @@ if not current_messages:
 I can help you:
 - 🧠 **Explain concepts** — Just ask "{subject_data['example_concept']}"
 - ❓ **Socratic mode** — I'll check your understanding first. Stuck? Click the button!
-- 📸 **Solve from images** — Upload a photo below and ask your question
 - 📝 **Practice questions** — Quick mock tests
 
 **Try asking: "{subject_data['example_question']}"**"""
@@ -709,39 +648,6 @@ for i, message in enumerate(current_messages):
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
-# IMAGE UPLOAD — persistent across reruns
-# ============================================================
-st.divider()
-st.markdown("##### 📎 Attach Image (Optional)")
-uploaded_file = st.file_uploader(
-    "Upload a photo of your problem",
-    type=["png", "jpg", "jpeg"],
-    label_visibility="collapsed"
-)
-
-# Only update session state when a NEW file is uploaded
-if uploaded_file is not None:
-    image_bytes = uploaded_file.read()
-    st.session_state.saved_image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-    st.session_state.saved_image_mime = uploaded_file.type
-
-# Show indicator if image is saved in session state
-if st.session_state.saved_image_b64:
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.success("📷 Image ready! Now type your question below and press Enter.")
-    with col2:
-        if st.button("❌ Remove"):
-            st.session_state.saved_image_b64 = None
-            st.session_state.saved_image_mime = None
-            st.rerun()
-
-# Use saved image from session state
-image_b64 = st.session_state.saved_image_b64
-image_mime = st.session_state.saved_image_mime
-st.divider()
-
-# ============================================================
 # PENDING AI REQUESTS
 # ============================================================
 if st.session_state.pending_ai_request:
@@ -765,24 +671,20 @@ if st.session_state.pending_ai_request:
 # ============================================================
 # CHAT INPUT
 # ============================================================
-if prompt := st.chat_input("Ask a question... (or upload an image above first)"):
+if prompt := st.chat_input("Ask a question..."):
     today = date.today()
     if st.session_state.last_study_date != today:
         st.session_state.study_streak += 1
         st.session_state.last_study_date = today
 
-    display_text = prompt if prompt else "📷 [Image uploaded]"
-    current_messages.append({"role": "user", "content": display_text, "msg_type": "user_question"})
+    current_messages.append({"role": "user", "content": prompt, "msg_type": "user_question"})
 
     user_msgs = [m for m in current_messages if m["role"] == "user" and not m.get("hidden")]
     if len(user_msgs) == 1:
         st.session_state.original_question = prompt
 
     # Determine intent
-    if image_b64:
-        intent = "image"
-        topic_tag = "Image question"
-    elif st.session_state.awaiting_answer and st.session_state.last_socratic_question:
+    if st.session_state.awaiting_answer and st.session_state.last_socratic_question:
         intent = "evaluate_answer"
         topic_tag = st.session_state.last_socratic_question[:40]
         st.session_state.awaiting_answer = False
@@ -797,12 +699,7 @@ if prompt := st.chat_input("Ask a question... (or upload an image above first)")
 
     with st.chat_message("assistant", avatar="🧠"):
         with st.spinner("Thinking..."):
-            answer, msg_type = get_ai_response(prompt, intent, topic_tag, image_b64, image_mime)
-
-            # Clear image from session state after it's been used
-            if image_b64:
-                st.session_state.saved_image_b64 = None
-                st.session_state.saved_image_mime = None
+            answer, msg_type = get_ai_response(prompt, intent, topic_tag)
 
             is_correct = False
             if intent == "evaluate_answer":
