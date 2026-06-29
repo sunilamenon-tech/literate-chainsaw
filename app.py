@@ -164,8 +164,14 @@ def show_clap_celebration():
 # ============================================================
 # API KEY DETECTION
 # ============================================================
-api_config = None
+# api_config      → used for student chat (Groq preferred — fast & free)
+# vision_config   → used for parent analyzer (Google preferred — reads PDFs/images)
+# Both are detected independently so they can run side by side.
 
+api_config    = None   # student chat
+vision_config = None   # parent analyzer (vision-capable)
+
+# ── Student chat API (Groq → OpenRouter → Google fallback) ──
 try:
     key = st.secrets["GROQ_API_KEY"]
     if key and len(key) > 10:
@@ -185,6 +191,17 @@ if not api_config:
         if key and len(key) > 10:
             api_config = {"provider": "google", "key": key, "model": "gemini-1.5-pro", "url": None}
     except: pass
+
+# ── Vision API for parent analyzer (Google preferred → falls back to text-only) ──
+try:
+    key = st.secrets["GOOGLE_API_KEY"]
+    if key and len(key) > 10:
+        vision_config = {"provider": "google", "key": key, "model": "gemini-1.5-pro"}
+except: pass
+
+if not vision_config:
+    # No vision-capable key found — parent analyzer will work in text-only mode
+    vision_config = None
 
 if not api_config:
     st.markdown("<div class='setup-box'><h2>🔧 Setup Required</h2><p>Add any ONE API key to Streamlit secrets.</p></div>", unsafe_allow_html=True)
@@ -566,21 +583,13 @@ def show_parent_analyzer():
         "not just which topics are weak, but the root cause behind them."
     )
 
-    st.markdown(
-        "<div style='background:#FFF3E0;border-left:4px solid #FF6600;"
-        "padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:13px;color:#546E7A'>"
-        "ℹ️ <b>Using Groq API:</b> The AI will generate a thorough diagnostic analysis based on "
-        "the subject, grade, and context you provide. For best results, describe the test topics "
-        "in the extra notes field below.</div>",
-        unsafe_allow_html=True
-    )
 
     # ── Step 1: Upload ───────────────────────────────────
     st.markdown("### 📄 Step 1 — Upload the test paper")
     uploaded_file = st.file_uploader(
         "Photo or PDF of the test",
         type=["jpg", "jpeg", "png", "pdf"],
-        help="A phone photo works fine. With Groq, the AI uses your context details rather than reading the image directly."
+        help="Clear phone photo works great. If Google API key is added, the AI reads the image directly."
     )
     if uploaded_file:
         if uploaded_file.type.startswith("image"):
@@ -815,7 +824,8 @@ SUBJECT_CONTENT = {
 # SIDEBAR
 # ============================================================
 with st.sidebar:
-    # Mode toggle — Student or Parent
+
+    # ── MODE TOGGLE — always visible at top ──────────────
     st.markdown("### 👤 Mode")
     app_mode = st.radio(
         "",
@@ -826,148 +836,219 @@ with st.sidebar:
     )
     st.divider()
 
-    st.markdown("### 🎯 Your Goal")
-    exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"],
-        index=["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"].index(st.session_state.exam_goal))
-    current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"],
-        index=["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"].index(st.session_state.current_topic))
+    # ════════════════════════════════════════════════════
+    # PARENT SIDEBAR — clean, minimal, parent-relevant only
+    # ════════════════════════════════════════════════════
+    if app_mode == "👨‍👩‍👧 Parent":
 
-    if exam_goal == "Other":
-        has_date = st.radio("Choose one:", ["Yes, I have a test date", "No, just learning"],
-            index=0 if st.session_state.has_specific_date else 1, label_visibility="collapsed")
-        st.session_state.has_specific_date = (has_date == "Yes, I have a test date")
-        if st.session_state.has_specific_date:
-            test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
-        else:
-            test_date = date.today() + timedelta(days=365)
-            st.caption("📌 Learning at your own pace!")
-    else:
-        st.session_state.has_specific_date = True
-        test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
+        # How it works
+        st.markdown("### 📋 How it works")
+        st.markdown(
+            "<div style='background:#FFF3E0;border-left:3px solid #FF6600;"
+            "padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.8'>"
+            "📄 <b>Step 1</b> — Upload your child's test paper<br>"
+            "🧒 <b>Step 2</b> — Enter child's name, class & subject<br>"
+            "✨ <b>Step 3</b> — Get a full diagnosis in seconds"
+            "</div>",
+            unsafe_allow_html=True
+        )
 
-    days_left = (test_date - date.today()).days
-    if st.session_state.has_specific_date:
-        if days_left <= 3: st.error(f"🚨 {days_left} days left! CRUNCH MODE")
-        elif days_left <= 14: st.warning(f"⏰ {days_left} days left")
-        else: st.info(f"📅 {days_left} days left")
-
-    if st.button("🔄 Update Context", use_container_width=True):
-        st.session_state.exam_goal = exam_goal
-        st.session_state.current_topic = current_topic
-        st.session_state.test_date = test_date
-        if current_topic not in st.session_state.threads:
-            st.session_state.threads[current_topic] = []
-        st.session_state.current_thread = current_topic
-        st.toast(f"Switched to {current_topic}!")
-        st.rerun()
-
-    st.divider()
-    st.markdown("### 🔌 AI Status")
-    st.success(f"✅ {api_config['provider'].upper()}")
-    st.caption(f"Model: {api_config['model'].split('/')[-1]}")
-
-    st.divider()
-    st.markdown("### 🔥 Study Streak")
-    today = date.today()
-    if st.session_state.last_study_date == today - timedelta(days=1):
-        st.session_state.study_streak += 1
-        st.session_state.last_study_date = today
-    elif st.session_state.last_study_date != today:
-        st.session_state.study_streak = 1
-        st.session_state.last_study_date = today
-    st.markdown(f"<div class='streak-badge'>🔥 {st.session_state.study_streak} day streak</div>", unsafe_allow_html=True)
-
-    st.divider()
-    st.markdown("### ⚠️ Focus Areas")
-    if st.session_state.weak_areas:
-        for topic, count in sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[:5]:
-            st.markdown(f"<span class='weak-area-tag'>{topic} ({count})</span>", unsafe_allow_html=True)
-    else:
-        st.caption("Keep studying to see your focus areas!")
-
-    st.divider()
-    st.markdown("### 💬 Chat Threads")
-    for thread_name in list(st.session_state.threads.keys()):
-        cols = st.columns([4, 1])
-        with cols[0]:
-            active = "✅ " if thread_name == st.session_state.current_thread else ""
-            if st.button(f"{active}📁 {thread_name}", key=f"thread_{thread_name}", use_container_width=True):
-                st.session_state.current_thread = thread_name
-                st.rerun()
-        with cols[1]:
-            if thread_name != "General" and st.button("🗑️", key=f"del_{thread_name}"):
-                del st.session_state.threads[thread_name]
-                st.session_state.current_thread = "General"
-                st.rerun()
-
-    st.divider()
-
-    # DAILY CHALLENGE
-    st.markdown("### 🎯 Daily Challenge")
-    today = date.today()
-
-    if st.session_state.daily_challenge_date != today:
-        st.session_state.daily_challenge = None
-        st.session_state.daily_challenge_completed = False
-        st.session_state.daily_challenge_subject = None
-
-    if st.session_state.daily_challenge_subject and st.session_state.daily_challenge_subject != current_topic:
-        st.session_state.daily_challenge = None
-        st.session_state.daily_challenge_completed = False
-        st.session_state.daily_challenge_subject = None
-
-    if st.session_state.daily_challenge_date:
-        yesterday = today - timedelta(days=1)
-        if st.session_state.daily_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
-            st.session_state.challenge_streak = 0
-
-    if st.session_state.challenge_streak > 0:
-        flame = "🔥" * min(st.session_state.challenge_streak, 5)
-        st.markdown(f"<div class='streak-badge'>{flame} {st.session_state.challenge_streak} day challenge streak!</div>", unsafe_allow_html=True)
-
-    if not st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-        with st.spinner("📝 Generating today's challenge..."):
-            challenge_text = generate_daily_challenge(current_topic, exam_goal)
-            st.session_state.daily_challenge = challenge_text
-            st.session_state.daily_challenge_date = today
-            st.session_state.daily_challenge_subject = current_topic
-
-    if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-        st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
-        if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
-            st.session_state.daily_challenge_completed = True
-            st.session_state.challenge_streak += 1
-            st.session_state.challenge_history.append({"date": str(today), "subject": current_topic, "completed": True})
-            st.balloons()
-            st.toast(f"🎉 Challenge done! Streak: {st.session_state.challenge_streak}")
-            st.rerun()
-    elif st.session_state.daily_challenge_completed:
-        st.markdown("<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>🎉 Come back tomorrow for a new one!</div>", unsafe_allow_html=True)
-
-    if st.session_state.challenge_history:
         st.divider()
-        st.markdown("### 📊 This Week")
-        this_week = [c for c in st.session_state.challenge_history
-                     if datetime.strptime(c["date"], "%Y-%m-%d").date() >= today - timedelta(days=7)]
-        done = sum(1 for c in this_week if c["completed"])
-        st.markdown(f"✅ **{done}/7** challenges completed this week")
 
-    st.divider()
-    if st.button("🗑️ Clear This Chat", use_container_width=True):
-        st.session_state.threads[st.session_state.current_thread] = []
-        st.session_state.awaiting_answer = False
-        st.session_state.last_socratic_question = None
-        st.session_state.original_question = None
-        st.session_state.last_followup_label = None
-        st.session_state.last_followup_prompt = None
-        st.rerun()
+        # Last analysis summary
+        st.markdown("### 📊 Last Analysis")
+        if st.session_state.parent_analysis:
+            data = st.session_state.parent_analysis
+            child = st.session_state.get("parent_child_name", "Student")
+            pct   = data.get("percentage", 0)
+            score_color = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
+            st.markdown(
+                f"<div style='background:white;border:1px solid #F0E6D3;"
+                f"border-radius:10px;padding:12px 14px'>"
+                f"<div style='font-weight:700;font-size:14px;color:#1A1A1A'>{child}</div>"
+                f"<div style='font-size:13px;color:#546E7A;margin-top:2px'>"
+                f"{data.get('subject','')} &nbsp;·&nbsp; {data.get('grade','')}</div>"
+                f"<div style='font-size:22px;font-weight:800;color:{score_color};margin-top:6px'>"
+                f"{pct}% &nbsp;"
+                f"<span style='font-size:13px;font-weight:400;color:#546E7A'>"
+                f"{data.get('marksObtained',0)}/{data.get('totalMarks',0)} marks</span></div>"
+                f"<div style='font-size:11px;color:#9E9E9E;margin-top:4px'>"
+                f"Analyzed on {date.today().strftime('%d %b %Y')}</div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.caption("No analysis run yet. Upload a test paper to get started.")
+
+        st.divider()
+
+        # AI Status
+        st.markdown("### 🔌 AI Status")
+        st.success(f"✅ {api_config['provider'].upper()}")
+        if vision_config:
+            st.success("✅ GOOGLE (Vision)")
+            st.caption("PDFs & images: Gemini reads them directly")
+        else:
+            st.warning("⚠️ No vision API key")
+            st.caption("Add GOOGLE_API_KEY to Streamlit secrets for PDF/image reading")
+
+    # ════════════════════════════════════════════════════
+    # STUDENT SIDEBAR — full original experience
+    # ════════════════════════════════════════════════════
+    else:
+        st.markdown("### 🎯 Your Goal")
+        exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"],
+            index=["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"].index(st.session_state.exam_goal))
+        current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"],
+            index=["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"].index(st.session_state.current_topic))
+
+        if exam_goal == "Other":
+            has_date = st.radio("Choose one:", ["Yes, I have a test date", "No, just learning"],
+                index=0 if st.session_state.has_specific_date else 1, label_visibility="collapsed")
+            st.session_state.has_specific_date = (has_date == "Yes, I have a test date")
+            if st.session_state.has_specific_date:
+                test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
+            else:
+                test_date = date.today() + timedelta(days=365)
+                st.caption("📌 Learning at your own pace!")
+        else:
+            st.session_state.has_specific_date = True
+            test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
+
+        days_left = (test_date - date.today()).days
+        if st.session_state.has_specific_date:
+            if days_left <= 3: st.error(f"🚨 {days_left} days left! CRUNCH MODE")
+            elif days_left <= 14: st.warning(f"⏰ {days_left} days left")
+            else: st.info(f"📅 {days_left} days left")
+
+        if st.button("🔄 Update Context", use_container_width=True):
+            st.session_state.exam_goal = exam_goal
+            st.session_state.current_topic = current_topic
+            st.session_state.test_date = test_date
+            if current_topic not in st.session_state.threads:
+                st.session_state.threads[current_topic] = []
+            st.session_state.current_thread = current_topic
+            st.toast(f"Switched to {current_topic}!")
+            st.rerun()
+
+        st.divider()
+        st.markdown("### 🔌 AI Status")
+        st.success(f"✅ {api_config['provider'].upper()}")
+        st.caption(f"Model: {api_config['model'].split('/')[-1]}")
+
+        st.divider()
+        st.markdown("### 🔥 Study Streak")
+        today = date.today()
+        if st.session_state.last_study_date == today - timedelta(days=1):
+            st.session_state.study_streak += 1
+            st.session_state.last_study_date = today
+        elif st.session_state.last_study_date != today:
+            st.session_state.study_streak = 1
+            st.session_state.last_study_date = today
+        st.markdown(f"<div class='streak-badge'>🔥 {st.session_state.study_streak} day streak</div>", unsafe_allow_html=True)
+
+        st.divider()
+        st.markdown("### ⚠️ Focus Areas")
+        if st.session_state.weak_areas:
+            for topic, count in sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[:5]:
+                st.markdown(f"<span class='weak-area-tag'>{topic} ({count})</span>", unsafe_allow_html=True)
+        else:
+            st.caption("Keep studying to see your focus areas!")
+
+        st.divider()
+        st.markdown("### 💬 Chat Threads")
+        for thread_name in list(st.session_state.threads.keys()):
+            cols = st.columns([4, 1])
+            with cols[0]:
+                active = "✅ " if thread_name == st.session_state.current_thread else ""
+                if st.button(f"{active}📁 {thread_name}", key=f"thread_{thread_name}", use_container_width=True):
+                    st.session_state.current_thread = thread_name
+                    st.rerun()
+            with cols[1]:
+                if thread_name != "General" and st.button("🗑️", key=f"del_{thread_name}"):
+                    del st.session_state.threads[thread_name]
+                    st.session_state.current_thread = "General"
+                    st.rerun()
+
+        st.divider()
+
+        # DAILY CHALLENGE
+        st.markdown("### 🎯 Daily Challenge")
+        today = date.today()
+
+        if st.session_state.daily_challenge_date != today:
+            st.session_state.daily_challenge = None
+            st.session_state.daily_challenge_completed = False
+            st.session_state.daily_challenge_subject = None
+
+        if st.session_state.daily_challenge_subject and st.session_state.daily_challenge_subject != current_topic:
+            st.session_state.daily_challenge = None
+            st.session_state.daily_challenge_completed = False
+            st.session_state.daily_challenge_subject = None
+
+        if st.session_state.daily_challenge_date:
+            yesterday = today - timedelta(days=1)
+            if st.session_state.daily_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
+                st.session_state.challenge_streak = 0
+
+        if st.session_state.challenge_streak > 0:
+            flame = "🔥" * min(st.session_state.challenge_streak, 5)
+            st.markdown(f"<div class='streak-badge'>{flame} {st.session_state.challenge_streak} day challenge streak!</div>", unsafe_allow_html=True)
+
+        if not st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
+            with st.spinner("📝 Generating today's challenge..."):
+                challenge_text = generate_daily_challenge(current_topic, exam_goal)
+                st.session_state.daily_challenge = challenge_text
+                st.session_state.daily_challenge_date = today
+                st.session_state.daily_challenge_subject = current_topic
+
+        if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
+            st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
+            if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
+                st.session_state.daily_challenge_completed = True
+                st.session_state.challenge_streak += 1
+                st.session_state.challenge_history.append({"date": str(today), "subject": current_topic, "completed": True})
+                st.balloons()
+                st.toast(f"🎉 Challenge done! Streak: {st.session_state.challenge_streak}")
+                st.rerun()
+        elif st.session_state.daily_challenge_completed:
+            st.markdown("<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>🎉 Come back tomorrow for a new one!</div>", unsafe_allow_html=True)
+
+        if st.session_state.challenge_history:
+            st.divider()
+            st.markdown("### 📊 This Week")
+            this_week = [c for c in st.session_state.challenge_history
+                         if datetime.strptime(c["date"], "%Y-%m-%d").date() >= today - timedelta(days=7)]
+            done = sum(1 for c in this_week if c["completed"])
+            st.markdown(f"✅ **{done}/7** challenges completed this week")
+
+        st.divider()
+        if st.button("🗑️ Clear This Chat", use_container_width=True):
+            st.session_state.threads[st.session_state.current_thread] = []
+            st.session_state.awaiting_answer = False
+            st.session_state.last_socratic_question = None
+            st.session_state.original_question = None
+            st.session_state.last_followup_label = None
+            st.session_state.last_followup_prompt = None
+            st.rerun()
+
+        # Keep exam_goal/current_topic/test_date accessible for student main area
+        # (these are only defined inside the else block so we set them on session state)
+        st.session_state._sidebar_exam_goal    = exam_goal
+        st.session_state._sidebar_topic        = current_topic
+        st.session_state._sidebar_test_date    = test_date
 
 # ============================================================
 # MAIN AREA — STUDENT MODE
 # ============================================================
 if app_mode == "🎓 Student":
 
-    # ── DISPLAY CHAT ──────────────────────────────────────
+    # Read values set by the student sidebar
+    exam_goal     = st.session_state.get("_sidebar_exam_goal",  st.session_state.exam_goal)
+    current_topic = st.session_state.get("_sidebar_topic",      st.session_state.current_topic)
+    test_date     = st.session_state.get("_sidebar_test_date",  st.session_state.test_date)
+
+    # u2500u2500 DISPLAY CHAT u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500
     current_messages = st.session_state.threads[st.session_state.current_thread]
     days_left = (st.session_state.test_date - date.today()).days
 
