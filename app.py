@@ -290,95 +290,51 @@ def call_api(messages_list, system_prompt):
 # ============================================================
 
 PARENT_SYSTEM_PROMPT = """You are FocusFlow's Parent Test Analyzer for Indian school students.
-Analyze the test paper and return ONLY a valid JSON object. No markdown fences, no preamble, no extra text.
+Analyze the test paper details and return ONLY a valid JSON object. No markdown fences, no preamble, no extra text.
 
 JSON structure:
 {
   "subject": "Mathematics",
-  "grade": "Class 9",
-  "totalMarks": 40,
-  "marksObtained": 26,
-  "percentage": 65,
+  "grade": "Class 7",
+  "totalMarks": 50,
+  "marksObtained": 31,
+  "percentage": 62,
   "overallSummary": "2-3 sentence honest assessment of the student's performance",
-  "questionBreakdown": [
-    {
-      "qNo": "Q1",
-      "marks": "1/1",
-      "status": "correct",
-      "topic": "Irrational Numbers",
-      "errorType": null,
-      "specificMistake": null
-    },
-    {
-      "qNo": "Q3",
-      "marks": "0/1",
-      "status": "wrong",
-      "topic": "Algebraic Identities",
-      "errorType": "Misread Question",
-      "specificMistake": "Student answered B) 58 which is actually correct — likely misread or circled wrong option"
-    },
-    {
-      "qNo": "Q6",
-      "marks": "1/2",
-      "status": "partial",
-      "topic": "Algebraic Expressions",
-      "errorType": "Sign Error",
-      "specificMistake": "Failed to distribute negative sign: wrote 9x²+12x+4 − 9x²−12x+4 instead of distributing the minus"
-    },
-    {
-      "qNo": "Q8",
-      "marks": "0/2",
-      "status": "unattempted",
-      "topic": "Polynomials",
-      "errorType": "Unattempted",
-      "specificMistake": "Left completely blank"
-    }
-  ],
-  "errorSummary": [
-    {"errorType": "Misread Question", "count": 1, "marksLost": 1, "questions": ["Q3"]},
-    {"errorType": "Sign Error", "count": 1, "marksLost": 1, "questions": ["Q6"]},
-    {"errorType": "Wrong Formula Applied", "count": 1, "marksLost": 3, "questions": ["Q10"]},
-    {"errorType": "Unattempted", "count": 2, "marksLost": 10, "questions": ["Q8", "Q11"]},
-    {"errorType": "Presentation Error", "count": 1, "marksLost": 1, "questions": ["Q12"]}
+  "markLossBreakdown": [
+    {"category": "Concept Gap", "marksLost": 10, "description": "Brief explanation of which concepts"},
+    {"category": "Careless Error", "marksLost": 5, "description": "Brief explanation"},
+    {"category": "Unattempted", "marksLost": 4, "description": "Questions left blank"}
   ],
   "strongAreas": [
-    {"topic": "Proof Writing", "evidence": "Q9 fully correct — irrational number proof done perfectly"}
+    {"topic": "Fractions", "evidence": "All 4 fraction questions answered correctly"}
   ],
   "weakAreas": [
-    {"topic": "Algebraic Identities", "rootCause": "Uses wrong formula — adds instead of subtracts in expansion", "severity": "high"},
-    {"topic": "Linear Graphs", "rootCause": "Consistently avoids graph-based questions — possible topic anxiety", "severity": "high"}
+    {"topic": "Algebra", "rootCause": "Cannot translate word problems into equations", "severity": "high"},
+    {"topic": "Negative Numbers", "rootCause": "Sign errors in subtraction consistently", "severity": "medium"}
   ],
-  "rootCauseSummary": "The core issue is not Algebra broadly — it is two specific gaps: wrong identity formulas and avoidance of graph questions.",
+  "rootCauseSummary": "The core issue is not Algebra itself — it is a weak foundation in negative numbers which cascades into Algebraic errors.",
   "sevenDayPlan": [
-    {"day": 1, "topic": "Algebraic Identities", "activity": "Rewrite and memorise all 8 standard identities with examples", "duration": "30 min"},
-    {"day": 2, "topic": "Identity Practice", "activity": "Solve 15 problems applying key identities", "duration": "30 min"},
-    {"day": 3, "topic": "Sign Rules", "activity": "10 bracket expansion problems focusing on negative sign distribution", "duration": "25 min"},
-    {"day": 4, "topic": "Linear Equations Graph", "activity": "Plot 3 linear equations step by step using table of values method", "duration": "35 min"},
-    {"day": 5, "topic": "Graph Reading", "activity": "Find intersection points of pairs of lines from graphs", "duration": "30 min"},
-    {"day": 6, "topic": "Mixed Practice", "activity": "5 identity questions + 2 graph questions — timed at 20 minutes", "duration": "25 min"},
-    {"day": 7, "topic": "Mini Checkpoint", "activity": "Attempt identity and graph questions only — self-evaluate", "duration": "25 min"}
+    {"day": 1, "topic": "Negative Number Operations", "activity": "20 targeted drill problems on addition/subtraction of negative numbers", "duration": "30 min"},
+    {"day": 2, "topic": "Number Line Visualization", "activity": "Visual exercises mapping negative number operations on a number line", "duration": "25 min"},
+    {"day": 3, "topic": "Algebra Basics", "activity": "Translate 10 real-life sentences into equations", "duration": "30 min"},
+    {"day": 4, "topic": "Practice Mixed", "activity": "10 questions combining negative numbers and simple algebra", "duration": "30 min"},
+    {"day": 5, "topic": "Word Problems", "activity": "Focus on identifying the unknown and writing the equation before solving", "duration": "35 min"},
+    {"day": 6, "topic": "Accuracy Drills", "activity": "Timed drills to reduce careless calculation errors", "duration": "20 min"},
+    {"day": 7, "topic": "Mini Test", "activity": "Attempt 8 questions from weak areas only — self-evaluate", "duration": "25 min"}
   ],
-  "checkpointTestFocus": ["Algebraic Identities (4 Qs)", "Linear Graphs (3 Qs)", "Sign Errors (2 Qs)"],
+  "checkpointTestFocus": ["Negative Numbers (5 Qs)", "Basic Algebra (3 Qs)", "Word Problems (2 Qs)"],
   "parentTip": "One specific actionable tip the parent can do at home to support this child"
 }
 
 Rules:
-- status must be one of: "correct", "wrong", "partial", "unattempted"
-- errorType can be ANY specific label — do NOT limit to a fixed list. Use whatever fits best:
-  "Misread Question", "Wrong Formula Applied", "Sign Error", "Unattempted", "Topic Avoidance",
-  "Calculation Slip", "Incomplete Steps", "Presentation Error", "Conceptual Gap",
-  "Rushed Answer", "Copied Wrong Value", "Unit Error", "Skipped Steps", etc.
+- category must be one of: "Concept Gap", "Careless Error", "Unattempted", "Calculation Error", "Incomplete Answer"
 - severity must be: "high", "medium", or "low"
 - Always return exactly 7 days in sevenDayPlan
-- Include ALL questions in questionBreakdown — correct and wrong
 - Return ONLY the JSON object, nothing else"""
 
 
 def run_parent_analysis(child_name, child_grade, child_subject, extra_notes, uploaded_file):
-    """Call the AI API with test paper context and return parsed JSON analysis.
-    Uses Google Vision if available (reads image/PDF directly).
-    Falls back to Groq text-only if no vision API key is present.
-    """
+    """Call the AI API with test paper context and return parsed JSON analysis."""
 
     context_line = (
         f"Student: {child_name or 'Unknown'}, "
@@ -387,64 +343,30 @@ def run_parent_analysis(child_name, child_grade, child_subject, extra_notes, upl
         f"{'Extra context: ' + extra_notes if extra_notes else ''}"
     )
 
-    # ── Path 1: Google Vision — reads the actual image/PDF ──
-    if vision_config and uploaded_file is not None:
-        file_bytes = uploaded_file.read()
-        b64        = base64.b64encode(file_bytes).decode()
-        media_type = uploaded_file.type
-
-        # Build Gemini parts
-        parts = []
-        if media_type.startswith("image"):
-            parts.append({"inlineData": {"mimeType": media_type, "data": b64}})
-        else:
-            parts.append({"inlineData": {"mimeType": "application/pdf", "data": b64}})
-        parts.append({"text": (
+    # Groq does not support vision — use text description only
+    if uploaded_file is not None:
+        prompt = (
             f"{context_line}\n\n"
-            f"This is the student's actual test paper. Read every question and every answer carefully. "
-            f"Identify each question number, what was asked, what the student wrote, "
-            f"and whether it is correct, wrong, partial, or unattempted. "
-            f"Be specific about the exact mistake in each wrong question."
-        )})
-
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{vision_config['model']}:generateContent?key={vision_config['key']}"
+            f"The parent has uploaded a test paper (filename: {uploaded_file.name}). "
+            f"Since image reading is not available for this API, generate a thorough and realistic "
+            f"diagnostic analysis based on the subject, grade, and any context provided. "
+            f"Make it specific and actionable."
         )
-        payload = {
-            "contents": [{"role": "user", "parts": parts}],
-            "systemInstruction": {"parts": [{"text": PARENT_SYSTEM_PROMPT}]},
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2000}
-        }
-        r    = requests.post(url, json=payload, timeout=60).json()
-        if "candidates" in r and r["candidates"]:
-            result_text = r["candidates"][0]["content"]["parts"][0]["text"]
-        else:
-            raise Exception(f"Google Vision API error: {r.get('error', r)}")
-
-    # ── Path 2: Groq text-only fallback ─────────────────────
     else:
-        if uploaded_file is not None:
-            prompt = (
-                f"{context_line}\n\n"
-                f"A test paper was uploaded (filename: {uploaded_file.name}) but direct image "
-                f"reading is not available. Generate a thorough and specific diagnostic analysis "
-                f"based on the subject, grade, and context. Include realistic per-question breakdown."
-            )
-        else:
-            prompt = (
-                f"{context_line}\n\n"
-                f"No file uploaded. Generate a realistic and specific diagnostic analysis "
-                f"based on the subject and grade provided. Include a realistic per-question breakdown."
-            )
-        result_text = call_api(
-            [{"role": "user", "content": prompt}],
-            PARENT_SYSTEM_PROMPT
+        prompt = (
+            f"{context_line}\n\n"
+            f"No file was uploaded. Generate a realistic and specific diagnostic analysis "
+            f"based on the subject and grade provided."
         )
 
-    # ── Parse JSON safely ────────────────────────────────────
+    result_text = call_api(
+        [{"role": "user", "content": prompt}],
+        PARENT_SYSTEM_PROMPT
+    )
+
+    # Parse JSON safely
     clean = result_text.strip().replace("```json", "").replace("```", "").strip()
-    data  = json.loads(clean)
+    data = json.loads(clean)
     return data
 
 
@@ -465,17 +387,18 @@ def sync_weak_areas_to_student(data):
 
 
 def render_parent_results(data, child_name=""):
-    """Render the full analysis results UI — question-by-question breakdown."""
+    """Render the full analysis results UI."""
 
     name_label = child_name or "Student"
-    pct        = data.get("percentage", 0)
-    obtained   = data.get("marksObtained", 0)
-    total      = data.get("totalMarks", 100)
+    pct = data.get("percentage", 0)
+    obtained = data.get("marksObtained", 0)
+    total = data.get("totalMarks", 100)
 
-    # ── Score banner ─────────────────────────────────────
-    score_color      = "#E8F5E9" if pct >= 75 else "#FFF3E0" if pct >= 50 else "#FFEBEE"
-    score_border     = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
+    # Score banner
+    score_color = "#E8F5E9" if pct >= 75 else "#FFF3E0" if pct >= 50 else "#FFEBEE"
+    score_border = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
     score_text_color = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
+
     st.markdown(
         f"<div style='background:{score_color};border-left:5px solid {score_border};"
         f"padding:18px 20px;border-radius:12px;margin-bottom:16px'>"
@@ -487,108 +410,40 @@ def render_parent_results(data, child_name=""):
         unsafe_allow_html=True
     )
 
-    # ── Tabs ─────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Question Breakdown", "🔍 Root Cause", "📅 7-Day Plan", "💌 Parent Tip"])
+    # Tabs for results
+    tab1, tab2, tab3, tab4 = st.tabs(["📉 Mark Loss", "🔍 Root Cause", "📅 7-Day Plan", "💌 Parent Tip"])
 
-    STATUS_CONFIG = {
-        "correct":     ("#E8F5E9", "#2E7D32", "✅", "Correct"),
-        "wrong":       ("#FFEBEE", "#C62828", "❌", "Wrong"),
-        "partial":     ("#FFF3E0", "#E65100", "⚠️", "Partial"),
-        "unattempted": ("#E3F2FD", "#1565C0", "⏭️", "Not attempted"),
+    LOSS_COLORS = {
+        "Concept Gap":       ("#FFEBEE", "#C62828", "🧠"),
+        "Careless Error":    ("#FFF8E1", "#E65100", "✏️"),
+        "Unattempted":       ("#E3F2FD", "#1565C0", "⏭️"),
+        "Calculation Error": ("#F3E5F5", "#6A1B9A", "🔢"),
+        "Incomplete Answer": ("#ECEFF1", "#37474F", "📝"),
     }
 
-    # ════════════════════════════════════════════════════
-    # TAB 1 — QUESTION BREAKDOWN
-    # ════════════════════════════════════════════════════
+    # ── TAB 1: MARK LOSS ──────────────────────────────────
     with tab1:
-
-        questions = data.get("questionBreakdown", [])
-        wrong_qs  = [q for q in questions if q.get("status") != "correct"]
-        right_qs  = [q for q in questions if q.get("status") == "correct"]
-
-        # Error summary pills at the top
-        error_summary = data.get("errorSummary", [])
-        if error_summary:
-            st.markdown("**Where did the marks go?**")
-            pills_html = ""
-            PILL_COLORS = [
-                ("#FFEBEE","#C62828"), ("#FFF3E0","#E65100"), ("#E3F2FD","#1565C0"),
-                ("#F3E5F5","#6A1B9A"), ("#ECEFF1","#37474F"), ("#FFF8E1","#F57F17"),
-                ("#E8F5E9","#2E7D32"),
-            ]
-            for idx, err in enumerate(error_summary):
-                bg, fg = PILL_COLORS[idx % len(PILL_COLORS)]
-                qs_list = ", ".join(err.get("questions", []))
-                pills_html += (
-                    f"<span style='background:{bg};color:{fg};padding:5px 12px;"
-                    f"border-radius:10px;font-size:12px;font-weight:600;margin:3px;display:inline-block'>"
-                    f"{err.get('errorType','')} &nbsp;·&nbsp; "
-                    f"−{err.get('marksLost',0)} marks &nbsp;·&nbsp; {qs_list}"
-                    f"</span>"
-                )
-            st.markdown(f"<div style='margin-bottom:16px'>{pills_html}</div>", unsafe_allow_html=True)
-
-        # Wrong / partial questions first
-        if wrong_qs:
-            st.markdown("**❌ Questions that lost marks:**")
-            for q in wrong_qs:
-                status = q.get("status", "wrong")
-                bg, fg, icon, label = STATUS_CONFIG.get(status, ("#ECEFF1","#37474F","❓","Unknown"))
-                error_type    = q.get("errorType") or ""
-                specific      = q.get("specificMistake") or ""
-                topic         = q.get("topic") or ""
-                marks         = q.get("marks","")
-
-                # Error type badge color
-                badge_colors = {
-                    "Unattempted":         ("#E3F2FD","#1565C0"),
-                    "Topic Avoidance":     ("#E3F2FD","#1565C0"),
-                    "Sign Error":          ("#F3E5F5","#6A1B9A"),
-                    "Calculation Slip":    ("#F3E5F5","#6A1B9A"),
-                    "Wrong Formula Applied":("#FFEBEE","#C62828"),
-                    "Conceptual Gap":      ("#FFEBEE","#C62828"),
-                    "Misread Question":    ("#FFF8E1","#F57F17"),
-                    "Presentation Error":  ("#ECEFF1","#37474F"),
-                }
-                badge_bg, badge_fg = badge_colors.get(error_type, ("#FFF3E0","#E65100"))
-
-                st.markdown(
-                    f"<div style='background:{bg};border-left:4px solid {fg};"
-                    f"border-radius:10px;padding:12px 16px;margin-bottom:8px'>"
-                    f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'>"
-                    f"<span style='font-weight:700;font-size:15px;color:{fg}'>{icon} {q.get('qNo','')}</span>"
-                    f"<div style='display:flex;gap:8px;align-items:center'>"
-                    f"<span style='background:{badge_bg};color:{badge_fg};font-size:11px;"
-                    f"padding:2px 10px;border-radius:8px;font-weight:600'>{error_type}</span>"
-                    f"<span style='font-weight:700;color:{fg};font-size:14px'>{marks}</span>"
-                    f"</div></div>"
-                    f"<div style='font-size:12px;color:#546E7A;margin-bottom:4px'>📚 {topic}</div>"
-                    + (f"<div style='font-size:13px;color:#37474F;line-height:1.5'>"
-                       f"💬 {specific}</div>" if specific else "")
-                    + "</div>",
-                    unsafe_allow_html=True
-                )
-
+        st.markdown("**Why were marks lost?** Every lost mark has a reason.")
         st.markdown("")
 
-        # Correct questions — collapsed
-        if right_qs:
-            with st.expander(f"✅ {len(right_qs)} questions answered correctly", expanded=False):
-                for q in right_qs:
-                    st.markdown(
-                        f"<div style='background:#E8F5E9;border-left:3px solid #2E7D32;"
-                        f"border-radius:8px;padding:8px 14px;margin-bottom:6px;"
-                        f"display:flex;justify-content:space-between'>"
-                        f"<span style='font-weight:600;color:#2E7D32'>{q.get('qNo','')}</span>"
-                        f"<span style='color:#546E7A;font-size:13px'>{q.get('topic','')}</span>"
-                        f"<span style='font-weight:700;color:#2E7D32'>{q.get('marks','')}</span>"
-                        f"</div>",
-                        unsafe_allow_html=True
-                    )
+        total_lost = sum(i.get("marksLost", 0) for i in data.get("markLossBreakdown", []))
+        st.markdown(f"Total marks lost: **{total_lost} / {total}**")
+
+        for item in data.get("markLossBreakdown", []):
+            cat = item.get("category", "Other")
+            bg, fg, icon = LOSS_COLORS.get(cat, ("#ECEFF1", "#37474F", "❓"))
+            st.markdown(
+                f"<div style='background:{bg};border-left:4px solid {fg};"
+                f"padding:12px 16px;border-radius:8px;margin-bottom:8px'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center'>"
+                f"<span style='font-weight:700;color:{fg}'>{icon} {cat}</span>"
+                f"<span style='font-weight:800;font-size:18px;color:{fg}'>−{item.get('marksLost', 0)} marks</span>"
+                f"</div><div style='color:#546E7A;font-size:13px;margin-top:4px'>"
+                f"{item.get('description', '')}</div></div>",
+                unsafe_allow_html=True
+            )
 
         st.markdown("")
-
-        # Strong vs Weak areas
         col_s, col_w = st.columns(2)
         with col_s:
             st.markdown("**✅ Strong areas**")
@@ -602,9 +457,9 @@ def render_parent_results(data, child_name=""):
         with col_w:
             st.markdown("**⚠️ Weak areas**")
             for a in data.get("weakAreas", []):
-                sev = a.get("severity","medium")
-                sev_bg    = {"high":"#FFEBEE","medium":"#FFF3E0","low":"#E8F5E9"}.get(sev,"#F5F5F5")
-                sev_color = {"high":"#C62828","medium":"#E65100","low":"#2E7D32"}.get(sev,"#546E7A")
+                sev = a.get("severity", "medium")
+                sev_bg = {"high": "#FFEBEE", "medium": "#FFF3E0", "low": "#E8F5E9"}.get(sev, "#F5F5F5")
+                sev_color = {"high": "#C62828", "medium": "#E65100", "low": "#2E7D32"}.get(sev, "#546E7A")
                 st.markdown(
                     f"<div style='background:{sev_bg};padding:10px 12px;border-radius:8px;margin-bottom:6px'>"
                     f"<b style='color:{sev_color}'>{a.get('topic')}</b> "
@@ -612,21 +467,20 @@ def render_parent_results(data, child_name=""):
                     unsafe_allow_html=True
                 )
 
-    # ════════════════════════════════════════════════════
-    # TAB 2 — ROOT CAUSE
-    # ════════════════════════════════════════════════════
+    # ── TAB 2: ROOT CAUSE ─────────────────────────────────
     with tab2:
         st.markdown(
             f"<div style='background:#FFF8E1;border-left:4px solid #FFC107;"
             f"padding:14px 16px;border-radius:8px;margin-bottom:16px'>"
             f"<b style='color:#E65100'>🔍 The real diagnosis</b><br><br>"
-            f"<span style='color:#37474F;line-height:1.7'>{data.get('rootCauseSummary','')}</span></div>",
+            f"<span style='color:#37474F;line-height:1.7'>{data.get('rootCauseSummary', '')}</span></div>",
             unsafe_allow_html=True
         )
+
         for a in data.get("weakAreas", []):
-            sev = a.get("severity","medium")
-            sev_bg    = {"high":"#FFEBEE","medium":"#FFF3E0","low":"#E8F5E9"}.get(sev,"#F5F5F5")
-            sev_color = {"high":"#C62828","medium":"#E65100","low":"#2E7D32"}.get(sev,"#546E7A")
+            sev = a.get("severity", "medium")
+            sev_bg = {"high": "#FFEBEE", "medium": "#FFF3E0", "low": "#E8F5E9"}.get(sev, "#F5F5F5")
+            sev_color = {"high": "#C62828", "medium": "#E65100", "low": "#2E7D32"}.get(sev, "#546E7A")
             st.markdown(
                 f"<div style='background:white;border:1px solid #F0E6D3;"
                 f"border-radius:12px;padding:14px 16px;margin-bottom:10px'>"
@@ -637,39 +491,37 @@ def render_parent_results(data, child_name=""):
                 f"<span style='color:#546E7A;font-size:14px'>💡 <b>Root cause:</b> {a.get('rootCause')}</span></div>",
                 unsafe_allow_html=True
             )
+
         st.markdown("**🎯 Checkpoint test after 7 days — focus only on:**")
-        chips = " ".join([
+        chips = "  ".join([
             f"<span style='background:#E3F2FD;color:#1565C0;padding:5px 14px;"
             f"border-radius:10px;font-size:13px;margin-right:6px'>{t}</span>"
             for t in data.get("checkpointTestFocus", [])
         ])
         st.markdown(chips + "<br>", unsafe_allow_html=True)
-        st.caption("After the 7-day plan, test only these topics — not a broad general test.")
+        st.caption("After the 7-day plan, test only these topics — not a broad general test. This tells you exactly if the weakness was fixed.")
 
-    # ════════════════════════════════════════════════════
-    # TAB 3 — 7-DAY PLAN
-    # ════════════════════════════════════════════════════
+    # ── TAB 3: 7-DAY PLAN ────────────────────────────────
     with tab3:
         st.markdown(f"Targeted plan for **{name_label}** — focused on specific weak areas, not generic revision.")
         st.markdown("")
         for day in data.get("sevenDayPlan", []):
-            day_num = day.get("day","")
-            label   = f"Day {day_num} — {day.get('topic','')}  ·  {day.get('duration','')}"
+            day_num = day.get("day", "")
+            label = f"Day {day_num} — {day.get('topic', '')}  ·  {day.get('duration', '')}"
             with st.expander(label, expanded=(day_num == 1)):
-                st.write(day.get("activity",""))
+                st.write(day.get("activity", ""))
+
         st.markdown("")
         st.markdown(
             "<div style='background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;"
             "padding:14px 16px'><b style='color:#2E7D32'>✅ After Day 7</b><br>"
             "<span style='color:#546E7A;font-size:13px'>Run a mini checkpoint test focused only on the "
-            "weak areas identified. If scores improve, the gaps are closed. "
+            "weak areas identified above. If scores improve, the gaps are closed. "
             "If not, repeat Days 1–3.</span></div>",
             unsafe_allow_html=True
         )
 
-    # ════════════════════════════════════════════════════
-    # TAB 4 — PARENT TIP
-    # ════════════════════════════════════════════════════
+    # ── TAB 4: PARENT TIP ────────────────────────────────
     with tab4:
         st.markdown(
             f"<div style='background:#FFF3E0;border:2px solid #FF6600;"
@@ -678,16 +530,18 @@ def render_parent_results(data, child_name=""):
             f"<div style='font-weight:700;font-size:16px;color:#1A1A1A;margin-bottom:12px'>"
             f"A note for you, as a parent</div>"
             f"<p style='font-size:15px;color:#37474F;line-height:1.7;margin:0'>"
-            f"{data.get('parentTip','')}</p></div>",
+            f"{data.get('parentTip', '')}</p></div>",
             unsafe_allow_html=True
         )
+
+        # Sync status
         st.markdown("**🔗 Student profile sync status**")
-        subject = data.get("subject","")
-        synced  = {k: v for k, v in st.session_state.weak_areas.items() if subject in k}
+        subject = data.get("subject", "")
+        synced = {k: v for k, v in st.session_state.weak_areas.items() if subject in k}
         if synced:
             st.success(
-                f"✅ {len(synced)} weak area(s) synced to the student's FocusFlow profile. "
-                f"Daily challenges will automatically focus on these topics."
+                f"✅ {len(synced)} weak area(s) are now synced to the student's FocusFlow profile. "
+                f"Daily challenges and mock tests will automatically focus on these topics."
             )
             for k in synced:
                 st.markdown(
@@ -697,33 +551,23 @@ def render_parent_results(data, child_name=""):
                 )
         else:
             st.info("Weak areas will appear here after analysis is complete.")
+
+        # Copy summary button
         st.markdown("")
-        summary_lines = [
-            f"FocusFlow Test Analysis — {name_label}",
-            "="*50,
-            f"Subject: {data.get('subject')} | Grade: {data.get('grade')}",
-            f"Score: {obtained}/{total} ({pct}%)",
-            "",
-            "QUESTION BREAKDOWN:",
-        ]
-        for q in data.get("questionBreakdown", []):
-            if q.get("status") != "correct":
-                summary_lines.append(
-                    f"{q.get('qNo')}: {q.get('marks')} [{q.get('errorType','')}] — {q.get('specificMistake','')}"
-                )
-        summary_lines += [
-            "",
-            "WEAK AREAS:",
-            *[f"• {a.get('topic')}: {a.get('rootCause')}" for a in data.get("weakAreas",[])],
-            "",
-            f"ROOT CAUSE: {data.get('rootCauseSummary','')}",
-            "",
-            "7-DAY PLAN:",
-            *[f"Day {d.get('day')}: {d.get('topic')} — {d.get('activity')}" for d in data.get("sevenDayPlan",[])],
-        ]
+        summary_text = (
+            f"FocusFlow Test Analysis — {name_label}\n"
+            f"{'='*50}\n"
+            f"Subject: {data.get('subject')} | Grade: {data.get('grade')}\n"
+            f"Score: {obtained}/{total} ({pct}%)\n\n"
+            f"Weak Areas:\n" +
+            "\n".join([f"• {a.get('topic')}: {a.get('rootCause')}" for a in data.get("weakAreas", [])]) +
+            f"\n\nRoot Cause:\n{data.get('rootCauseSummary', '')}\n\n"
+            f"7-Day Plan:\n" +
+            "\n".join([f"Day {d.get('day')}: {d.get('topic')} — {d.get('activity')}" for d in data.get("sevenDayPlan", [])])
+        )
         st.download_button(
             "📋 Download Full Analysis",
-            data="\n".join(summary_lines),
+            data=summary_text,
             file_name=f"focusflow_analysis_{name_label.replace(' ','_')}_{date.today()}.txt",
             mime="text/plain",
             use_container_width=True
