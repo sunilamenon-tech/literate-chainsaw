@@ -578,16 +578,10 @@ def show_parent_analyzer():
     """Main Parent Analyzer page — rendered when mode is Parent."""
 
     st.markdown("## 👨‍👩‍👧 Parent Test Analyzer")
-    st.markdown(
-        "Upload your child's test paper. FocusFlow will diagnose **why** marks were lost — "
-        "not just which topics are weak, but the root cause behind them."
-    )
-
 
     # ── Step 1: Upload ───────────────────────────────────
-    st.markdown("### 📄 Step 1 — Upload the test paper")
     uploaded_file = st.file_uploader(
-        "Photo or PDF of the test",
+        "📄 Upload test paper (photo or PDF)",
         type=["jpg", "jpeg", "png", "pdf"],
         help="Clear phone photo works great. If Google API key is added, the AI reads the image directly."
     )
@@ -597,21 +591,20 @@ def show_parent_analyzer():
         else:
             st.success(f"✅ {uploaded_file.name} uploaded successfully")
 
-    # ── Step 2: Context ──────────────────────────────────
-    st.markdown("### 🧒 Step 2 — Tell us about your child")
-    col1, col2 = st.columns(2)
-    with col1:
-        child_name  = st.text_input("Child's name", placeholder="e.g. Arjun")
-        child_grade = st.text_input("Class / Grade", placeholder="e.g. Class 7")
-    with col2:
-        child_subject = st.text_input("Subject", placeholder="e.g. Mathematics")
-        extra_notes   = st.text_input(
-            "Extra context (optional)",
-            placeholder="e.g. weak in fractions, gets nervous, skipped chapter 3"
-        )
+    st.markdown("")
 
-    # ── Step 3: Analyze ──────────────────────────────────
-    st.markdown("### ✨ Step 3 — Run the analysis")
+    # ── Step 2: Context ──────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        child_name    = st.text_input("Child's name", placeholder="e.g. Arjun")
+    with c2:
+        child_grade   = st.text_input("Class / Grade", placeholder="e.g. Class 7")
+    with c3:
+        child_subject = st.text_input("Subject", placeholder="e.g. Mathematics")
+    with c4:
+        extra_notes   = st.text_input("Extra context", placeholder="e.g. skipped chapter 3")
+
+    st.markdown("")
 
     if st.button("🔍 Analyze Test Paper", use_container_width=True, type="primary"):
         if not child_subject:
