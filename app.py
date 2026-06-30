@@ -1,9 +1,9 @@
 import streamlit as st
 import requests
 from datetime import date, datetime, timedelta
-import random
 import json
 import base64
+import time
 
 # ============================================================
 # PAGE CONFIG
@@ -113,14 +113,6 @@ st.markdown("""
         padding: 16px;
         margin-bottom: 12px;
     }
-    .loss-card {
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -164,14 +156,9 @@ def show_clap_celebration():
 # ============================================================
 # API KEY DETECTION
 # ============================================================
-# api_config      → used for student chat (Groq preferred — fast & free)
-# vision_config   → used for parent analyzer (Google preferred — reads PDFs/images)
-# Both are detected independently so they can run side by side.
+api_config    = None
+vision_config = None
 
-api_config    = None   # student chat
-vision_config = None   # parent analyzer (vision-capable)
-
-# ── Student chat API (Groq → OpenRouter → Google fallback) ──
 try:
     key = st.secrets["GROQ_API_KEY"]
     if key and len(key) > 10:
@@ -189,19 +176,14 @@ if not api_config:
     try:
         key = st.secrets["GOOGLE_API_KEY"]
         if key and len(key) > 10:
-            api_config = {"provider": "google", "key": key, "model": "gemini-1.5-pro", "url": None}
+            api_config = {"provider": "google", "key": key, "model": "gemini-flash-latest", "url": None}
     except: pass
 
-# ── Vision API for parent analyzer (Google preferred → falls back to text-only) ──
 try:
     key = st.secrets["GOOGLE_API_KEY"]
     if key and len(key) > 10:
-        vision_config = {"provider": "google", "key": key, "model": "gemini-1.5-pro"}
+        vision_config = {"provider": "google", "key": key, "model": "gemini-flash-latest"}
 except: pass
-
-if not vision_config:
-    # No vision-capable key found — parent analyzer will work in text-only mode
-    vision_config = None
 
 if not api_config:
     st.markdown("<div class='setup-box'><h2>🔧 Setup Required</h2><p>Add any ONE API key to Streamlit secrets.</p></div>", unsafe_allow_html=True)
@@ -286,56 +268,147 @@ def call_api(messages_list, system_prompt):
         return f"❌ Error: {str(e)}"
 
 # ============================================================
-# PARENT TEST ANALYZER — HELPER FUNCTIONS
+# PARENT TEST ANALYZER
 # ============================================================
 
 PARENT_SYSTEM_PROMPT = """You are FocusFlow's Parent Test Analyzer for Indian school students.
-Analyze the test paper details and return ONLY a valid JSON object. No markdown fences, no preamble, no extra text.
+Analyze the uploaded test paper carefully — read every question and every answer the student wrote.
+Return ONLY a valid JSON object. No markdown fences, no preamble, no extra text.
 
 JSON structure:
 {
   "subject": "Mathematics",
-  "grade": "Class 7",
-  "totalMarks": 50,
-  "marksObtained": 31,
-  "percentage": 62,
+  "grade": "Class 9",
+  "totalMarks": 40,
+  "marksObtained": 26,
+  "percentage": 65,
   "overallSummary": "2-3 sentence honest assessment of the student's performance",
-  "markLossBreakdown": [
-    {"category": "Concept Gap", "marksLost": 10, "description": "Brief explanation of which concepts"},
-    {"category": "Careless Error", "marksLost": 5, "description": "Brief explanation"},
-    {"category": "Unattempted", "marksLost": 4, "description": "Questions left blank"}
+
+  "questionBreakdown": [
+    {
+      "qNo": "Q1",
+      "topic": "Irrational Numbers",
+      "marksAllotted": 1,
+      "marksObtained": 1,
+      "status": "correct",
+      "errorType": null,
+      "specificMistake": null
+    },
+    {
+      "qNo": "Q3",
+      "topic": "Algebraic Identities",
+      "marksAllotted": 1,
+      "marksObtained": 0,
+      "status": "wrong",
+      "errorType": "Misread Question",
+      "specificMistake": "Student answered B) 58 which is actually the correct value — most likely misread the options or circled the wrong one by mistake"
+    },
+    {
+      "qNo": "Q6",
+      "topic": "Algebraic Expressions",
+      "marksAllotted": 2,
+      "marksObtained": 1,
+      "status": "partial",
+      "errorType": "Sign Error",
+      "specificMistake": "Did not distribute the negative sign correctly — wrote 9x²+12x+4 − 9x²−12x+4 instead of 9x²+12x+4 − (9x²−12x+4)"
+    },
+    {
+      "qNo": "Q8",
+      "topic": "Polynomials",
+      "marksAllotted": 2,
+      "marksObtained": 0,
+      "status": "unattempted",
+      "errorType": "Unattempted",
+      "specificMistake": "Left completely blank — no working shown"
+    }
   ],
+
+  "errorSummary": [
+    {
+      "errorType": "Misread Question",
+      "marksLost": 1,
+      "questions": ["Q3"],
+      "description": "Student knew the answer but marked wrong option"
+    },
+    {
+      "errorType": "Sign Error",
+      "marksLost": 1,
+      "questions": ["Q6"],
+      "description": "Negative sign not distributed properly in bracket expansion"
+    },
+    {
+      "errorType": "Wrong Formula Applied",
+      "marksLost": 3,
+      "questions": ["Q10"],
+      "description": "Used (a+b+c)² + 2(ab+bc+ca) instead of minus"
+    },
+    {
+      "errorType": "Unattempted",
+      "marksLost": 2,
+      "questions": ["Q8"],
+      "description": "Question left blank"
+    },
+    {
+      "errorType": "Topic Avoidance",
+      "marksLost": 8,
+      "questions": ["Q11"],
+      "description": "Graph-based question skipped entirely — possible topic anxiety"
+    },
+    {
+      "errorType": "Presentation Error",
+      "marksLost": 1,
+      "questions": ["Q12"],
+      "description": "Working fully correct but final answer not boxed/highlighted"
+    }
+  ],
+
   "strongAreas": [
-    {"topic": "Fractions", "evidence": "All 4 fraction questions answered correctly"}
+    {"topic": "Proof Writing", "evidence": "Q9 fully correct — irrational number proof done perfectly"},
+    {"topic": "Factorization", "evidence": "Q5 correct — factorized x²+5x+6 accurately"}
   ],
+
   "weakAreas": [
-    {"topic": "Algebra", "rootCause": "Cannot translate word problems into equations", "severity": "high"},
-    {"topic": "Negative Numbers", "rootCause": "Sign errors in subtraction consistently", "severity": "medium"}
+    {"topic": "Algebraic Identities", "rootCause": "Uses wrong formula — adds instead of subtracts in (a+b+c)² expansion", "severity": "high"},
+    {"topic": "Linear Graphs", "rootCause": "Consistently avoids graph-based questions — possible topic anxiety or lack of practice", "severity": "high"},
+    {"topic": "Sign Rules in Brackets", "rootCause": "Does not distribute negative sign when expanding brackets", "severity": "medium"}
   ],
-  "rootCauseSummary": "The core issue is not Algebra itself — it is a weak foundation in negative numbers which cascades into Algebraic errors.",
+
+  "rootCauseSummary": "The core issues are two specific gaps: wrong identity formulas (adds when should subtract) and complete avoidance of graph questions. Sign errors in bracket expansion are a secondary pattern worth addressing.",
+
   "sevenDayPlan": [
-    {"day": 1, "topic": "Negative Number Operations", "activity": "20 targeted drill problems on addition/subtraction of negative numbers", "duration": "30 min"},
-    {"day": 2, "topic": "Number Line Visualization", "activity": "Visual exercises mapping negative number operations on a number line", "duration": "25 min"},
-    {"day": 3, "topic": "Algebra Basics", "activity": "Translate 10 real-life sentences into equations", "duration": "30 min"},
-    {"day": 4, "topic": "Practice Mixed", "activity": "10 questions combining negative numbers and simple algebra", "duration": "30 min"},
-    {"day": 5, "topic": "Word Problems", "activity": "Focus on identifying the unknown and writing the equation before solving", "duration": "35 min"},
-    {"day": 6, "topic": "Accuracy Drills", "activity": "Timed drills to reduce careless calculation errors", "duration": "20 min"},
-    {"day": 7, "topic": "Mini Test", "activity": "Attempt 8 questions from weak areas only — self-evaluate", "duration": "25 min"}
+    {"day": 1, "topic": "Algebraic Identities", "activity": "Rewrite all 8 standard identities with examples, focus on (a+b+c)²", "duration": "30 min"},
+    {"day": 2, "topic": "Identity Practice", "activity": "Solve 15 problems applying key identities — self check each answer", "duration": "30 min"},
+    {"day": 3, "topic": "Sign Rules in Brackets", "activity": "10 bracket expansion problems focusing only on negative sign distribution", "duration": "25 min"},
+    {"day": 4, "topic": "Linear Equations — Table Method", "activity": "Plot 3 linear equations step by step using table of values", "duration": "35 min"},
+    {"day": 5, "topic": "Graph Intersection", "activity": "Find intersection points of 2 pairs of lines from their graphs", "duration": "30 min"},
+    {"day": 6, "topic": "Mixed Practice", "activity": "5 identity questions + 2 graph questions — timed 20 minutes", "duration": "25 min"},
+    {"day": 7, "topic": "Mini Checkpoint", "activity": "8 questions covering only weak areas — self evaluate strictly", "duration": "25 min"}
   ],
-  "checkpointTestFocus": ["Negative Numbers (5 Qs)", "Basic Algebra (3 Qs)", "Word Problems (2 Qs)"],
+
+  "checkpointTestFocus": ["Algebraic Identities (4 Qs)", "Linear Graphs (3 Qs)", "Sign Errors in Brackets (2 Qs)"],
+
   "parentTip": "One specific actionable tip the parent can do at home to support this child"
 }
 
-Rules:
-- category must be one of: "Concept Gap", "Careless Error", "Unattempted", "Calculation Error", "Incomplete Answer"
+CRITICAL RULES:
+- Include ALL questions in questionBreakdown — both correct and incorrect ones
+- status must be one of: "correct", "wrong", "partial", "unattempted"
+- errorType for wrong/partial questions: use ANY label that fits best — do NOT limit to a fixed list.
+  Examples: "Misread Question", "Wrong Formula Applied", "Sign Error", "Unattempted",
+  "Topic Avoidance", "Calculation Slip", "Incomplete Steps", "Presentation Error",
+  "Conceptual Gap", "Rushed Answer", "Copied Wrong Value", "Unit Error",
+  "Skipped Steps", "Memory Error", "Overconfidence Error" — or invent a better label.
+- specificMistake must name the EXACT error in that specific question — not a generic description
 - severity must be: "high", "medium", or "low"
 - Always return exactly 7 days in sevenDayPlan
 - Return ONLY the JSON object, nothing else"""
 
 
 def run_parent_analysis(child_name, child_grade, child_subject, extra_notes, uploaded_file):
-    """Call the AI API with test paper context and return parsed JSON analysis."""
-
+    """Call the AI API with test paper and return parsed JSON analysis.
+    Uses Google Vision if available — reads the image/PDF directly.
+    Falls back to Groq text-only if no vision key present.
+    """
     context_line = (
         f"Student: {child_name or 'Unknown'}, "
         f"Grade: {child_grade or 'Unknown'}, "
@@ -343,42 +416,136 @@ def run_parent_analysis(child_name, child_grade, child_subject, extra_notes, upl
         f"{'Extra context: ' + extra_notes if extra_notes else ''}"
     )
 
-    # Groq does not support vision — use text description only
-    if uploaded_file is not None:
-        prompt = (
+    # ── Google Vision path — actually reads the image/PDF ──
+    if vision_config and uploaded_file is not None:
+        file_bytes = uploaded_file.read()
+        b64        = base64.b64encode(file_bytes).decode()
+        media_type = uploaded_file.type
+
+        parts = []
+        if media_type.startswith("image"):
+            parts.append({"inlineData": {"mimeType": media_type, "data": b64}})
+        else:
+            parts.append({"inlineData": {"mimeType": "application/pdf", "data": b64}})
+
+        parts.append({"text": (
             f"{context_line}\n\n"
-            f"The parent has uploaded a test paper (filename: {uploaded_file.name}). "
-            f"Since image reading is not available for this API, generate a thorough and realistic "
-            f"diagnostic analysis based on the subject, grade, and any context provided. "
-            f"Make it specific and actionable."
+            f"This is the student's actual test paper. "
+            f"Read every single question carefully. "
+            f"Read exactly what the student wrote as their answer. "
+            f"For each question: identify the question number, topic, marks allotted, "
+            f"what the student wrote, whether it is correct/wrong/partial/unattempted, "
+            f"and the SPECIFIC mistake if wrong. "
+            f"Do not generalise — be precise about each question."
+        )})
+
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{vision_config['model']}:generateContent?key={vision_config['key']}"
         )
+        payload = {
+            "contents": [{"role": "user", "parts": parts}],
+            "systemInstruction": {"parts": [{"text": PARENT_SYSTEM_PROMPT}]},
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8000}
+        }
+
+        # ── Retry with backoff for transient errors (503 overload, 429 rate limit) ──
+        MAX_RETRIES   = 3
+        RETRY_DELAYS  = [3, 8, 15]  # seconds, increasing backoff
+        last_error    = None
+        result_text   = None
+
+        for attempt in range(MAX_RETRIES):
+            r = requests.post(url, json=payload, timeout=90).json()
+
+            if "candidates" in r and r["candidates"]:
+                candidate     = r["candidates"][0]
+                finish_reason = candidate.get("finishReason", "")
+                if "content" not in candidate or "parts" not in candidate["content"]:
+                    raise Exception(
+                        f"Gemini stopped before producing output (finishReason: {finish_reason}). "
+                        f"Try a clearer photo or fewer questions."
+                    )
+                result_text = candidate["content"]["parts"][0]["text"]
+                if finish_reason == "MAX_TOKENS":
+                    raise Exception(
+                        "The response was cut off because it got too long (too many questions). "
+                        "Try uploading a shorter test paper, or split it into sections."
+                    )
+                break  # success — exit retry loop
+
+            else:
+                error_info = r.get("error", {})
+                error_code = error_info.get("code", 0)
+                error_msg  = error_info.get("message", str(r))
+                last_error = f"Google Vision API error: {error_info or r}"
+
+                # Only retry on transient errors: 503 (overloaded) or 429 (rate limited)
+                is_transient = error_code in (503, 429)
+                if is_transient and attempt < MAX_RETRIES - 1:
+                    delay = RETRY_DELAYS[attempt]
+                    st.toast(
+                        f"⏳ Google's AI is busy — retrying in {delay}s "
+                        f"(attempt {attempt + 1}/{MAX_RETRIES})...",
+                        icon="🔄"
+                    )
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise Exception(last_error)
+
+        if result_text is None:
+            raise Exception(last_error or "Unknown error — no response from Gemini after retries.")
+
+    # ── Groq text-only fallback ──
     else:
-        prompt = (
-            f"{context_line}\n\n"
-            f"No file was uploaded. Generate a realistic and specific diagnostic analysis "
-            f"based on the subject and grade provided."
+        if uploaded_file is not None:
+            prompt = (
+                f"{context_line}\n\n"
+                f"A test paper was uploaded (filename: {uploaded_file.name}) "
+                f"but direct image reading is not available. "
+                f"Generate a thorough and specific diagnostic analysis based on "
+                f"the subject, grade, and context. Include realistic per-question breakdown "
+                f"with specific mistake descriptions for each question."
+            )
+        else:
+            prompt = (
+                f"{context_line}\n\n"
+                f"No file uploaded. Generate a realistic and specific diagnostic analysis "
+                f"based on the subject and grade. Include a realistic per-question breakdown."
+            )
+        result_text = call_api(
+            [{"role": "user", "content": prompt}],
+            PARENT_SYSTEM_PROMPT
         )
 
-    result_text = call_api(
-        [{"role": "user", "content": prompt}],
-        PARENT_SYSTEM_PROMPT
-    )
-
-    # Parse JSON safely
+    # ── Robust JSON extraction ──
     clean = result_text.strip().replace("```json", "").replace("```", "").strip()
-    data = json.loads(clean)
+    # If there's stray text before/after the JSON object, extract just the {...} block
+    first_brace = clean.find("{")
+    last_brace  = clean.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        clean = clean[first_brace:last_brace + 1]
+    try:
+        data = json.loads(clean)
+    except json.JSONDecodeError as e:
+        # Surface the raw text so we can see what went wrong instead of a blind failure
+        raise Exception(
+            f"Could not parse AI response as JSON ({str(e)}). "
+            f"Raw response started with: {clean[:300]}"
+        )
     return data
 
 
 def sync_weak_areas_to_student(data):
     """Push weak areas from parent analysis into student's weak_areas session state."""
-    subject_tag = data.get("subject", "General")
+    subject_tag  = data.get("subject", "General")
     synced_count = 0
     for area in data.get("weakAreas", []):
-        topic = area.get("topic", "Unknown")
+        topic    = area.get("topic", "Unknown")
         severity = area.get("severity", "medium")
-        weight = {"high": 3, "medium": 2, "low": 1}.get(severity, 1)
-        key = f"{subject_tag}: {topic}"
+        weight   = {"high": 3, "medium": 2, "low": 1}.get(severity, 1)
+        key      = f"{subject_tag}: {topic}"
         st.session_state.weak_areas[key] = (
             st.session_state.weak_areas.get(key, 0) + weight
         )
@@ -387,16 +554,16 @@ def sync_weak_areas_to_student(data):
 
 
 def render_parent_results(data, child_name=""):
-    """Render the full analysis results UI."""
+    """Render the full analysis results — question-by-question breakdown."""
 
     name_label = child_name or "Student"
-    pct = data.get("percentage", 0)
-    obtained = data.get("marksObtained", 0)
-    total = data.get("totalMarks", 100)
+    pct        = data.get("percentage", 0)
+    obtained   = data.get("marksObtained", 0)
+    total      = data.get("totalMarks", 100)
 
     # Score banner
-    score_color = "#E8F5E9" if pct >= 75 else "#FFF3E0" if pct >= 50 else "#FFEBEE"
-    score_border = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
+    score_color      = "#E8F5E9" if pct >= 75 else "#FFF3E0" if pct >= 50 else "#FFEBEE"
+    score_border     = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
     score_text_color = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
 
     st.markdown(
@@ -410,46 +577,140 @@ def render_parent_results(data, child_name=""):
         unsafe_allow_html=True
     )
 
-    # Tabs for results
-    tab1, tab2, tab3, tab4 = st.tabs(["📉 Mark Loss", "🔍 Root Cause", "📅 7-Day Plan", "💌 Parent Tip"])
+    # Tabs
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📋 Question Breakdown", "🔍 Root Cause", "📅 7-Day Plan", "💌 Parent Tip"
+    ])
 
-    LOSS_COLORS = {
-        "Concept Gap":       ("#FFEBEE", "#C62828", "🧠"),
-        "Careless Error":    ("#FFF8E1", "#E65100", "✏️"),
-        "Unattempted":       ("#E3F2FD", "#1565C0", "⏭️"),
-        "Calculation Error": ("#F3E5F5", "#6A1B9A", "🔢"),
-        "Incomplete Answer": ("#ECEFF1", "#37474F", "📝"),
+    # Status config
+    STATUS_CONFIG = {
+        "correct":     ("#E8F5E9", "#2E7D32", "✅"),
+        "wrong":       ("#FFEBEE", "#C62828", "❌"),
+        "partial":     ("#FFF3E0", "#E65100", "⚠️"),
+        "unattempted": ("#E3F2FD", "#1565C0", "⏭️"),
     }
 
-    # ── TAB 1: MARK LOSS ──────────────────────────────────
+    # Dynamic badge color based on error type
+    def badge_color(error_type):
+        et = (error_type or "").lower()
+        if any(x in et for x in ["unattempted", "avoidance", "blank"]):
+            return "#E3F2FD", "#1565C0"
+        if any(x in et for x in ["sign", "calculation", "slip", "arithmetic"]):
+            return "#F3E5F5", "#6A1B9A"
+        if any(x in et for x in ["concept", "formula", "wrong formula", "memory"]):
+            return "#FFEBEE", "#C62828"
+        if any(x in et for x in ["misread", "rushed", "overconfidence", "careless"]):
+            return "#FFF8E1", "#F57F17"
+        if any(x in et for x in ["presentation", "incomplete", "skipped steps"]):
+            return "#ECEFF1", "#37474F"
+        return "#FFF3E0", "#E65100"
+
+    # ════════════════════════════════════════════════════
+    # TAB 1 — QUESTION BREAKDOWN
+    # ════════════════════════════════════════════════════
     with tab1:
-        st.markdown("**Why were marks lost?** Every lost mark has a reason.")
+        questions = data.get("questionBreakdown", [])
+        wrong_qs  = [q for q in questions if q.get("status") != "correct"]
+        right_qs  = [q for q in questions if q.get("status") == "correct"]
+
+        # Error summary pills
+        error_summary = data.get("errorSummary", [])
+        if error_summary:
+            st.markdown("**Where did the marks go?**")
+            pills_html = ""
+            PILL_COLORS = [
+                ("#FFEBEE","#C62828"), ("#FFF3E0","#E65100"), ("#E3F2FD","#1565C0"),
+                ("#F3E5F5","#6A1B9A"), ("#ECEFF1","#37474F"), ("#FFF8E1","#F57F17"),
+                ("#E8F5E9","#2E7D32"), ("#FCE4EC","#880E4F"),
+            ]
+            for idx, err in enumerate(error_summary):
+                bg, fg = PILL_COLORS[idx % len(PILL_COLORS)]
+                qs_list = ", ".join(err.get("questions", []))
+                pills_html += (
+                    f"<span style='background:{bg};color:{fg};padding:5px 14px;"
+                    f"border-radius:10px;font-size:12px;font-weight:600;"
+                    f"margin:3px;display:inline-block'>"
+                    f"{err.get('errorType','')} &nbsp;·&nbsp; "
+                    f"−{err.get('marksLost',0)} marks &nbsp;·&nbsp; {qs_list}"
+                    f"</span>"
+                )
+            st.markdown(f"<div style='margin-bottom:20px;line-height:2'>{pills_html}</div>",
+                        unsafe_allow_html=True)
+
+        # Wrong / partial / unattempted — shown first
+        if wrong_qs:
+            st.markdown("**❌ Questions that lost marks — with specific mistakes:**")
+            for q in wrong_qs:
+                status     = q.get("status", "wrong")
+                bg, fg, icon = STATUS_CONFIG.get(status, ("#ECEFF1","#37474F","❓"))
+                error_type = q.get("errorType") or "Unknown"
+                specific   = q.get("specificMistake") or ""
+                topic      = q.get("topic") or ""
+                m_allot    = q.get("marksAllotted", "?")
+                m_got      = q.get("marksObtained", 0)
+                badge_bg, badge_fg = badge_color(error_type)
+
+                st.markdown(
+                    f"<div style='background:{bg};border-left:4px solid {fg};"
+                    f"border-radius:10px;padding:14px 16px;margin-bottom:10px'>"
+
+                    # Top row: Q number + error badge + marks
+                    f"<div style='display:flex;justify-content:space-between;"
+                    f"align-items:center;margin-bottom:8px'>"
+                    f"<div style='display:flex;align-items:center;gap:10px'>"
+                    f"<span style='font-weight:800;font-size:16px;color:{fg}'>"
+                    f"{icon} {q.get('qNo','')}</span>"
+                    f"<span style='background:{badge_bg};color:{badge_fg};font-size:11px;"
+                    f"padding:3px 10px;border-radius:8px;font-weight:700'>{error_type}</span>"
+                    f"</div>"
+                    f"<span style='font-weight:800;color:{fg};font-size:15px'>"
+                    f"{m_got}/{m_allot}</span>"
+                    f"</div>"
+
+                    # Topic
+                    f"<div style='font-size:12px;color:#546E7A;margin-bottom:6px'>"
+                    f"📚 {topic}</div>"
+
+                    # Specific mistake
+                    + (
+                        f"<div style='background:white;border-radius:6px;"
+                        f"padding:8px 12px;font-size:13px;color:#37474F;line-height:1.6'>"
+                        f"💬 <b>Exact mistake:</b> {specific}</div>"
+                        if specific else ""
+                    )
+                    + "</div>",
+                    unsafe_allow_html=True
+                )
+
         st.markdown("")
 
-        total_lost = sum(i.get("marksLost", 0) for i in data.get("markLossBreakdown", []))
-        st.markdown(f"Total marks lost: **{total_lost} / {total}**")
-
-        for item in data.get("markLossBreakdown", []):
-            cat = item.get("category", "Other")
-            bg, fg, icon = LOSS_COLORS.get(cat, ("#ECEFF1", "#37474F", "❓"))
-            st.markdown(
-                f"<div style='background:{bg};border-left:4px solid {fg};"
-                f"padding:12px 16px;border-radius:8px;margin-bottom:8px'>"
-                f"<div style='display:flex;justify-content:space-between;align-items:center'>"
-                f"<span style='font-weight:700;color:{fg}'>{icon} {cat}</span>"
-                f"<span style='font-weight:800;font-size:18px;color:{fg}'>−{item.get('marksLost', 0)} marks</span>"
-                f"</div><div style='color:#546E7A;font-size:13px;margin-top:4px'>"
-                f"{item.get('description', '')}</div></div>",
-                unsafe_allow_html=True
-            )
+        # Correct questions — collapsed
+        if right_qs:
+            with st.expander(f"✅ {len(right_qs)} question(s) answered correctly", expanded=False):
+                for q in right_qs:
+                    st.markdown(
+                        f"<div style='background:#E8F5E9;border-left:3px solid #2E7D32;"
+                        f"border-radius:8px;padding:8px 14px;margin-bottom:6px;"
+                        f"display:flex;justify-content:space-between;align-items:center'>"
+                        f"<span style='font-weight:700;color:#2E7D32'>"
+                        f"✅ {q.get('qNo','')}</span>"
+                        f"<span style='color:#546E7A;font-size:13px'>{q.get('topic','')}</span>"
+                        f"<span style='font-weight:700;color:#2E7D32'>"
+                        f"{q.get('marksObtained','')}/{q.get('marksAllotted','')}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
 
         st.markdown("")
+
+        # Strong vs Weak areas
         col_s, col_w = st.columns(2)
         with col_s:
             st.markdown("**✅ Strong areas**")
             for a in data.get("strongAreas", []):
                 st.markdown(
-                    f"<div style='background:#E8F5E9;padding:10px 12px;border-radius:8px;margin-bottom:6px'>"
+                    f"<div style='background:#E8F5E9;padding:10px 12px;"
+                    f"border-radius:8px;margin-bottom:6px'>"
                     f"<b style='color:#2E7D32'>{a.get('topic')}</b><br>"
                     f"<span style='font-size:12px;color:#546E7A'>{a.get('evidence')}</span></div>",
                     unsafe_allow_html=True
@@ -457,71 +718,84 @@ def render_parent_results(data, child_name=""):
         with col_w:
             st.markdown("**⚠️ Weak areas**")
             for a in data.get("weakAreas", []):
-                sev = a.get("severity", "medium")
-                sev_bg = {"high": "#FFEBEE", "medium": "#FFF3E0", "low": "#E8F5E9"}.get(sev, "#F5F5F5")
-                sev_color = {"high": "#C62828", "medium": "#E65100", "low": "#2E7D32"}.get(sev, "#546E7A")
+                sev       = a.get("severity","medium")
+                sev_bg    = {"high":"#FFEBEE","medium":"#FFF3E0","low":"#E8F5E9"}.get(sev,"#F5F5F5")
+                sev_color = {"high":"#C62828","medium":"#E65100","low":"#2E7D32"}.get(sev,"#546E7A")
                 st.markdown(
-                    f"<div style='background:{sev_bg};padding:10px 12px;border-radius:8px;margin-bottom:6px'>"
+                    f"<div style='background:{sev_bg};padding:10px 12px;"
+                    f"border-radius:8px;margin-bottom:6px'>"
                     f"<b style='color:{sev_color}'>{a.get('topic')}</b> "
                     f"<span style='font-size:11px;color:{sev_color}'>({sev} priority)</span></div>",
                     unsafe_allow_html=True
                 )
 
-    # ── TAB 2: ROOT CAUSE ─────────────────────────────────
+    # ════════════════════════════════════════════════════
+    # TAB 2 — ROOT CAUSE
+    # ════════════════════════════════════════════════════
     with tab2:
         st.markdown(
             f"<div style='background:#FFF8E1;border-left:4px solid #FFC107;"
             f"padding:14px 16px;border-radius:8px;margin-bottom:16px'>"
             f"<b style='color:#E65100'>🔍 The real diagnosis</b><br><br>"
-            f"<span style='color:#37474F;line-height:1.7'>{data.get('rootCauseSummary', '')}</span></div>",
+            f"<span style='color:#37474F;line-height:1.7'>"
+            f"{data.get('rootCauseSummary','')}</span></div>",
             unsafe_allow_html=True
         )
 
         for a in data.get("weakAreas", []):
-            sev = a.get("severity", "medium")
-            sev_bg = {"high": "#FFEBEE", "medium": "#FFF3E0", "low": "#E8F5E9"}.get(sev, "#F5F5F5")
-            sev_color = {"high": "#C62828", "medium": "#E65100", "low": "#2E7D32"}.get(sev, "#546E7A")
+            sev       = a.get("severity","medium")
+            sev_bg    = {"high":"#FFEBEE","medium":"#FFF3E0","low":"#E8F5E9"}.get(sev,"#F5F5F5")
+            sev_color = {"high":"#C62828","medium":"#E65100","low":"#2E7D32"}.get(sev,"#546E7A")
             st.markdown(
                 f"<div style='background:white;border:1px solid #F0E6D3;"
                 f"border-radius:12px;padding:14px 16px;margin-bottom:10px'>"
-                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>"
+                f"<div style='display:flex;justify-content:space-between;"
+                f"align-items:center;margin-bottom:8px'>"
                 f"<b style='font-size:15px'>{a.get('topic')}</b>"
                 f"<span style='background:{sev_bg};color:{sev_color};font-size:11px;"
                 f"padding:3px 10px;border-radius:10px;font-weight:600'>{sev} priority</span></div>"
-                f"<span style='color:#546E7A;font-size:14px'>💡 <b>Root cause:</b> {a.get('rootCause')}</span></div>",
+                f"<span style='color:#546E7A;font-size:14px'>"
+                f"💡 <b>Root cause:</b> {a.get('rootCause')}</span></div>",
                 unsafe_allow_html=True
             )
 
         st.markdown("**🎯 Checkpoint test after 7 days — focus only on:**")
-        chips = "  ".join([
+        chips = " ".join([
             f"<span style='background:#E3F2FD;color:#1565C0;padding:5px 14px;"
-            f"border-radius:10px;font-size:13px;margin-right:6px'>{t}</span>"
+            f"border-radius:10px;font-size:13px;margin-right:6px;display:inline-block'>{t}</span>"
             for t in data.get("checkpointTestFocus", [])
         ])
-        st.markdown(chips + "<br>", unsafe_allow_html=True)
-        st.caption("After the 7-day plan, test only these topics — not a broad general test. This tells you exactly if the weakness was fixed.")
+        st.markdown(f"<div style='margin:8px 0'>{chips}</div>", unsafe_allow_html=True)
+        st.caption("Test only these topics after Day 7 — not a broad general test. This tells you exactly if the weakness was fixed.")
 
-    # ── TAB 3: 7-DAY PLAN ────────────────────────────────
+    # ════════════════════════════════════════════════════
+    # TAB 3 — 7-DAY PLAN
+    # ════════════════════════════════════════════════════
     with tab3:
-        st.markdown(f"Targeted plan for **{name_label}** — focused on specific weak areas, not generic revision.")
+        st.markdown(
+            f"Targeted plan for **{name_label}** — focused on specific weak areas, not generic revision."
+        )
         st.markdown("")
         for day in data.get("sevenDayPlan", []):
-            day_num = day.get("day", "")
-            label = f"Day {day_num} — {day.get('topic', '')}  ·  {day.get('duration', '')}"
+            day_num = day.get("day","")
+            label   = f"Day {day_num} — {day.get('topic','')}  ·  {day.get('duration','')}"
             with st.expander(label, expanded=(day_num == 1)):
-                st.write(day.get("activity", ""))
+                st.write(day.get("activity",""))
 
         st.markdown("")
         st.markdown(
-            "<div style='background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;"
-            "padding:14px 16px'><b style='color:#2E7D32'>✅ After Day 7</b><br>"
-            "<span style='color:#546E7A;font-size:13px'>Run a mini checkpoint test focused only on the "
-            "weak areas identified above. If scores improve, the gaps are closed. "
+            "<div style='background:#E8F5E9;border:1px solid #A5D6A7;"
+            "border-radius:10px;padding:14px 16px'>"
+            "<b style='color:#2E7D32'>✅ After Day 7</b><br>"
+            "<span style='color:#546E7A;font-size:13px'>Run a mini checkpoint test focused "
+            "only on the weak areas identified above. If scores improve, the gaps are closed. "
             "If not, repeat Days 1–3.</span></div>",
             unsafe_allow_html=True
         )
 
-    # ── TAB 4: PARENT TIP ────────────────────────────────
+    # ════════════════════════════════════════════════════
+    # TAB 4 — PARENT TIP
+    # ════════════════════════════════════════════════════
     with tab4:
         st.markdown(
             f"<div style='background:#FFF3E0;border:2px solid #FF6600;"
@@ -530,40 +804,45 @@ def render_parent_results(data, child_name=""):
             f"<div style='font-weight:700;font-size:16px;color:#1A1A1A;margin-bottom:12px'>"
             f"A note for you, as a parent</div>"
             f"<p style='font-size:15px;color:#37474F;line-height:1.7;margin:0'>"
-            f"{data.get('parentTip', '')}</p></div>",
+            f"{data.get('parentTip','')}</p></div>",
             unsafe_allow_html=True
         )
 
-        # Sync status
         st.markdown("**🔗 Student profile sync status**")
-        subject = data.get("subject", "")
-        synced = {k: v for k, v in st.session_state.weak_areas.items() if subject in k}
+        subject = data.get("subject","")
+        synced  = {k: v for k, v in st.session_state.weak_areas.items() if subject in k}
         if synced:
             st.success(
-                f"✅ {len(synced)} weak area(s) are now synced to the student's FocusFlow profile. "
-                f"Daily challenges and mock tests will automatically focus on these topics."
+                f"✅ {len(synced)} weak area(s) synced to the student's FocusFlow profile. "
+                f"Daily challenges will now focus on these topics."
             )
-            for k in synced:
-                st.markdown(
-                    f"<span style='background:#FFE4CC;color:#FF6600;padding:3px 10px;"
-                    f"border-radius:10px;font-size:12px;margin-right:4px'>{k}</span>",
-                    unsafe_allow_html=True
-                )
+            chips_html = " ".join([
+                f"<span style='background:#FFE4CC;color:#FF6600;padding:3px 10px;"
+                f"border-radius:10px;font-size:12px;margin-right:4px'>{k}</span>"
+                for k in synced
+            ])
+            st.markdown(chips_html, unsafe_allow_html=True)
         else:
             st.info("Weak areas will appear here after analysis is complete.")
 
-        # Copy summary button
         st.markdown("")
         summary_text = (
             f"FocusFlow Test Analysis — {name_label}\n"
             f"{'='*50}\n"
             f"Subject: {data.get('subject')} | Grade: {data.get('grade')}\n"
             f"Score: {obtained}/{total} ({pct}%)\n\n"
-            f"Weak Areas:\n" +
-            "\n".join([f"• {a.get('topic')}: {a.get('rootCause')}" for a in data.get("weakAreas", [])]) +
-            f"\n\nRoot Cause:\n{data.get('rootCauseSummary', '')}\n\n"
-            f"7-Day Plan:\n" +
-            "\n".join([f"Day {d.get('day')}: {d.get('topic')} — {d.get('activity')}" for d in data.get("sevenDayPlan", [])])
+            f"QUESTION BREAKDOWN:\n" +
+            "\n".join([
+                f"{q.get('qNo')}: {q.get('status','').upper()} [{q.get('marksObtained','?')}/{q.get('marksAllotted','?')}]"
+                + (f" — {q.get('errorType','')} — {q.get('specificMistake','')}" if q.get('status') != 'correct' else "")
+                for q in data.get("questionBreakdown", [])
+            ]) +
+            f"\n\nROOT CAUSE:\n{data.get('rootCauseSummary','')}\n\n"
+            f"7-DAY PLAN:\n" +
+            "\n".join([
+                f"Day {d.get('day')}: {d.get('topic')} — {d.get('activity')}"
+                for d in data.get("sevenDayPlan", [])
+            ])
         )
         st.download_button(
             "📋 Download Full Analysis",
@@ -575,15 +854,12 @@ def render_parent_results(data, child_name=""):
 
 
 def show_parent_analyzer():
-    """Main Parent Analyzer page — rendered when mode is Parent."""
-
     st.markdown("## 👨‍👩‍👧 Parent Test Analyzer")
 
-    # ── Step 1: Upload ───────────────────────────────────
     uploaded_file = st.file_uploader(
         "📄 Upload test paper (photo or PDF)",
         type=["jpg", "jpeg", "png", "pdf"],
-        help="Clear phone photo works great. If Google API key is added, the AI reads the image directly."
+        help="Clear phone photo works great. Google Vision reads the image directly."
     )
     if uploaded_file:
         if uploaded_file.type.startswith("image"):
@@ -593,59 +869,44 @@ def show_parent_analyzer():
 
     st.markdown("")
 
-    # ── Step 2: Context ──────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        child_name    = st.text_input("Child's name", placeholder="e.g. Arjun")
+        child_name    = st.text_input("Child's name",   placeholder="e.g. Arjun")
     with c2:
-        child_grade   = st.text_input("Class / Grade", placeholder="e.g. Class 7")
+        child_grade   = st.text_input("Class / Grade",  placeholder="e.g. Class 9")
     with c3:
-        child_subject = st.text_input("Subject", placeholder="e.g. Mathematics")
+        child_subject = st.text_input("Subject",        placeholder="e.g. Mathematics")
     with c4:
-        extra_notes   = st.text_input("Extra context", placeholder="e.g. skipped chapter 3")
+        extra_notes   = st.text_input("Extra context",  placeholder="e.g. skipped chapter 3")
 
     st.markdown("")
 
     if st.button("🔍 Analyze Test Paper", use_container_width=True, type="primary"):
         if not child_subject:
-            st.warning("Please enter at least the subject so the AI can generate a relevant analysis.")
+            st.warning("Please enter at least the subject.")
             return
 
-        with st.spinner("Diagnosing gaps and building your child's improvement plan..."):
+        with st.spinner("Reading the test paper and diagnosing every question..."):
             try:
-                data = run_parent_analysis(
-                    child_name, child_grade, child_subject, extra_notes, uploaded_file
-                )
-                st.session_state.parent_analysis = data
+                data   = run_parent_analysis(child_name, child_grade, child_subject, extra_notes, uploaded_file)
+                st.session_state.parent_analysis   = data
                 st.session_state.parent_child_name = child_name
-
-                # Sync weak areas to student profile
                 synced = sync_weak_areas_to_student(data)
-                st.toast(
-                    f"✅ Analysis complete! {synced} weak area(s) synced to "
-                    f"{child_name or 'the student'}'s profile.",
-                    icon="🎯"
-                )
-
-            except json.JSONDecodeError:
-                st.error("The AI returned an unexpected response. Please try again.")
-                return
+                st.toast(f"✅ Done! {synced} weak area(s) synced to student profile.", icon="🎯")
             except Exception as e:
                 st.error(f"Analysis failed: {str(e)}")
                 return
 
-    # ── Show results if available ────────────────────────
     if st.session_state.parent_analysis:
         st.divider()
         st.markdown("## 📊 Analysis Results")
         render_parent_results(
             st.session_state.parent_analysis,
-            st.session_state.get("parent_child_name", "")
+            st.session_state.get("parent_child_name","")
         )
-
         st.divider()
         if st.button("🔄 Analyze a Different Test", use_container_width=True):
-            st.session_state.parent_analysis = None
+            st.session_state.parent_analysis   = None
             st.session_state.parent_child_name = ""
             st.rerun()
 
@@ -720,7 +981,7 @@ def check_if_correct(ai_response: str) -> bool:
 # MAIN AI RESPONSE
 # ============================================================
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
-    days_left = (st.session_state.test_date - date.today()).days
+    days_left  = (st.session_state.test_date - date.today()).days
     crunch_mode = (days_left <= 3 and st.session_state.has_specific_date)
 
     current_messages = st.session_state.threads[st.session_state.current_thread]
@@ -804,13 +1065,13 @@ Take your time! If you're stuck, click the ⚡ button below 👇"""
 # WELCOME CONTENT
 # ============================================================
 SUBJECT_CONTENT = {
-    "Physics": {"example_concept": "Explain Newton's Laws of Motion", "example_question": "What is Newton's First Law?"},
-    "Chemistry": {"example_concept": "Explain balancing chemical equations", "example_question": "How do I balance chemical equations?"},
-    "Maths": {"example_concept": "Explain quadratic equations", "example_question": "How do I solve quadratic equations?"},
-    "Biology": {"example_concept": "Explain Photosynthesis", "example_question": "What is photosynthesis?"},
-    "English": {"example_concept": "Explain the theme of 'The Road Not Taken'", "example_question": "What is the theme of 'The Road Not Taken'?"},
-    "History": {"example_concept": "Explain the causes of World War I", "example_question": "What were the main causes of World War I?"},
-    "Other": {"example_concept": "Explain the Pythagorean Theorem", "example_question": "What is the Pythagorean Theorem?"}
+    "Physics":   {"example_concept": "Explain Newton's Laws of Motion",         "example_question": "What is Newton's First Law?"},
+    "Chemistry": {"example_concept": "Explain balancing chemical equations",     "example_question": "How do I balance chemical equations?"},
+    "Maths":     {"example_concept": "Explain quadratic equations",              "example_question": "How do I solve quadratic equations?"},
+    "Biology":   {"example_concept": "Explain Photosynthesis",                   "example_question": "What is photosynthesis?"},
+    "English":   {"example_concept": "Explain the theme of 'The Road Not Taken'","example_question": "What is the theme of 'The Road Not Taken'?"},
+    "History":   {"example_concept": "Explain the causes of World War I",        "example_question": "What were the main causes of World War I?"},
+    "Other":     {"example_concept": "Explain the Pythagorean Theorem",          "example_question": "What is the Pythagorean Theorem?"}
 }
 
 # ============================================================
@@ -818,64 +1079,52 @@ SUBJECT_CONTENT = {
 # ============================================================
 with st.sidebar:
 
-    # ── MODE TOGGLE — always visible at top ──────────────
     st.markdown("### 👤 Mode")
     app_mode = st.radio(
-        "",
-        ["🎓 Student", "👨‍👩‍👧 Parent"],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="app_mode"
+        "", ["🎓 Student", "👨‍👩‍👧 Parent"],
+        horizontal=True, label_visibility="collapsed", key="app_mode"
     )
     st.divider()
 
-    # ════════════════════════════════════════════════════
-    # PARENT SIDEBAR — clean, minimal, parent-relevant only
-    # ════════════════════════════════════════════════════
+    # ── PARENT SIDEBAR ───────────────────────────────────
     if app_mode == "👨‍👩‍👧 Parent":
 
-        # How it works
         st.markdown("### 📋 How it works")
         st.markdown(
             "<div style='background:#FFF3E0;border-left:3px solid #FF6600;"
             "padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.8'>"
             "📄 <b>Step 1</b> — Upload your child's test paper<br>"
-            "🧒 <b>Step 2</b> — Enter child's name, class & subject<br>"
+            "🧒 <b>Step 2</b> — Enter name, class &amp; subject<br>"
             "✨ <b>Step 3</b> — Get a full diagnosis in seconds"
             "</div>",
             unsafe_allow_html=True
         )
-
         st.divider()
 
-        # Last analysis summary
         st.markdown("### 📊 Last Analysis")
         if st.session_state.parent_analysis:
-            data = st.session_state.parent_analysis
+            d     = st.session_state.parent_analysis
             child = st.session_state.get("parent_child_name", "Student")
-            pct   = data.get("percentage", 0)
-            score_color = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
+            pct   = d.get("percentage", 0)
+            sc    = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
             st.markdown(
                 f"<div style='background:white;border:1px solid #F0E6D3;"
                 f"border-radius:10px;padding:12px 14px'>"
-                f"<div style='font-weight:700;font-size:14px;color:#1A1A1A'>{child}</div>"
+                f"<div style='font-weight:700;font-size:14px'>{child}</div>"
                 f"<div style='font-size:13px;color:#546E7A;margin-top:2px'>"
-                f"{data.get('subject','')} &nbsp;·&nbsp; {data.get('grade','')}</div>"
-                f"<div style='font-size:22px;font-weight:800;color:{score_color};margin-top:6px'>"
+                f"{d.get('subject','')} &nbsp;·&nbsp; {d.get('grade','')}</div>"
+                f"<div style='font-size:22px;font-weight:800;color:{sc};margin-top:6px'>"
                 f"{pct}% &nbsp;"
                 f"<span style='font-size:13px;font-weight:400;color:#546E7A'>"
-                f"{data.get('marksObtained',0)}/{data.get('totalMarks',0)} marks</span></div>"
+                f"{d.get('marksObtained',0)}/{d.get('totalMarks',0)} marks</span></div>"
                 f"<div style='font-size:11px;color:#9E9E9E;margin-top:4px'>"
-                f"Analyzed on {date.today().strftime('%d %b %Y')}</div>"
-                f"</div>",
+                f"Analyzed on {date.today().strftime('%d %b %Y')}</div></div>",
                 unsafe_allow_html=True
             )
         else:
             st.caption("No analysis run yet. Upload a test paper to get started.")
 
         st.divider()
-
-        # AI Status
         st.markdown("### 🔌 AI Status")
         st.success(f"✅ {api_config['provider'].upper()}")
         if vision_config:
@@ -883,21 +1132,23 @@ with st.sidebar:
             st.caption("PDFs & images: Gemini reads them directly")
         else:
             st.warning("⚠️ No vision API key")
-            st.caption("Add GOOGLE_API_KEY to Streamlit secrets for PDF/image reading")
+            st.caption("Add GOOGLE_API_KEY to Streamlit secrets for image reading")
 
-    # ════════════════════════════════════════════════════
-    # STUDENT SIDEBAR — full original experience
-    # ════════════════════════════════════════════════════
+    # ── STUDENT SIDEBAR ──────────────────────────────────
     else:
         st.markdown("### 🎯 Your Goal")
-        exam_goal = st.selectbox("Exam/Goal", ["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"],
-            index=["JEE Main", "NEET", "10th Boards", "12th Boards", "UPSC", "Other"].index(st.session_state.exam_goal))
-        current_topic = st.selectbox("Subject", ["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"],
-            index=["Physics", "Chemistry", "Maths", "Biology", "English", "History", "Other"].index(st.session_state.current_topic))
+        exam_goal = st.selectbox("Exam/Goal",
+            ["JEE Main","NEET","10th Boards","12th Boards","UPSC","Other"],
+            index=["JEE Main","NEET","10th Boards","12th Boards","UPSC","Other"].index(st.session_state.exam_goal))
+        current_topic = st.selectbox("Subject",
+            ["Physics","Chemistry","Maths","Biology","English","History","Other"],
+            index=["Physics","Chemistry","Maths","Biology","English","History","Other"].index(st.session_state.current_topic))
 
         if exam_goal == "Other":
-            has_date = st.radio("Choose one:", ["Yes, I have a test date", "No, just learning"],
-                index=0 if st.session_state.has_specific_date else 1, label_visibility="collapsed")
+            has_date = st.radio("Choose one:",
+                ["Yes, I have a test date","No, just learning"],
+                index=0 if st.session_state.has_specific_date else 1,
+                label_visibility="collapsed")
             st.session_state.has_specific_date = (has_date == "Yes, I have a test date")
             if st.session_state.has_specific_date:
                 test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
@@ -910,14 +1161,14 @@ with st.sidebar:
 
         days_left = (test_date - date.today()).days
         if st.session_state.has_specific_date:
-            if days_left <= 3: st.error(f"🚨 {days_left} days left! CRUNCH MODE")
+            if days_left <= 3:   st.error(f"🚨 {days_left} days left! CRUNCH MODE")
             elif days_left <= 14: st.warning(f"⏰ {days_left} days left")
-            else: st.info(f"📅 {days_left} days left")
+            else:                 st.info(f"📅 {days_left} days left")
 
         if st.button("🔄 Update Context", use_container_width=True):
-            st.session_state.exam_goal = exam_goal
+            st.session_state.exam_goal    = exam_goal
             st.session_state.current_topic = current_topic
-            st.session_state.test_date = test_date
+            st.session_state.test_date    = test_date
             if current_topic not in st.session_state.threads:
                 st.session_state.threads[current_topic] = []
             st.session_state.current_thread = current_topic
@@ -933,18 +1184,21 @@ with st.sidebar:
         st.markdown("### 🔥 Study Streak")
         today = date.today()
         if st.session_state.last_study_date == today - timedelta(days=1):
-            st.session_state.study_streak += 1
+            st.session_state.study_streak  += 1
             st.session_state.last_study_date = today
         elif st.session_state.last_study_date != today:
-            st.session_state.study_streak = 1
+            st.session_state.study_streak   = 1
             st.session_state.last_study_date = today
-        st.markdown(f"<div class='streak-badge'>🔥 {st.session_state.study_streak} day streak</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='streak-badge'>🔥 {st.session_state.study_streak} day streak</div>",
+                    unsafe_allow_html=True)
 
         st.divider()
         st.markdown("### ⚠️ Focus Areas")
         if st.session_state.weak_areas:
-            for topic, count in sorted(st.session_state.weak_areas.items(), key=lambda x: x[1], reverse=True)[:5]:
-                st.markdown(f"<span class='weak-area-tag'>{topic} ({count})</span>", unsafe_allow_html=True)
+            for topic, count in sorted(st.session_state.weak_areas.items(),
+                                       key=lambda x: x[1], reverse=True)[:5]:
+                st.markdown(f"<span class='weak-area-tag'>{topic} ({count})</span>",
+                            unsafe_allow_html=True)
         else:
             st.caption("Keep studying to see your focus areas!")
 
@@ -964,89 +1218,93 @@ with st.sidebar:
                     st.rerun()
 
         st.divider()
-
-        # DAILY CHALLENGE
         st.markdown("### 🎯 Daily Challenge")
         today = date.today()
 
         if st.session_state.daily_challenge_date != today:
-            st.session_state.daily_challenge = None
+            st.session_state.daily_challenge          = None
             st.session_state.daily_challenge_completed = False
-            st.session_state.daily_challenge_subject = None
+            st.session_state.daily_challenge_subject   = None
 
-        if st.session_state.daily_challenge_subject and st.session_state.daily_challenge_subject != current_topic:
-            st.session_state.daily_challenge = None
+        if (st.session_state.daily_challenge_subject and
+                st.session_state.daily_challenge_subject != current_topic):
+            st.session_state.daily_challenge          = None
             st.session_state.daily_challenge_completed = False
-            st.session_state.daily_challenge_subject = None
+            st.session_state.daily_challenge_subject   = None
 
         if st.session_state.daily_challenge_date:
             yesterday = today - timedelta(days=1)
-            if st.session_state.daily_challenge_date == yesterday and not st.session_state.daily_challenge_completed:
+            if (st.session_state.daily_challenge_date == yesterday and
+                    not st.session_state.daily_challenge_completed):
                 st.session_state.challenge_streak = 0
 
         if st.session_state.challenge_streak > 0:
             flame = "🔥" * min(st.session_state.challenge_streak, 5)
-            st.markdown(f"<div class='streak-badge'>{flame} {st.session_state.challenge_streak} day challenge streak!</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='streak-badge'>{flame} {st.session_state.challenge_streak} day challenge streak!</div>",
+                unsafe_allow_html=True)
 
         if not st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
             with st.spinner("📝 Generating today's challenge..."):
                 challenge_text = generate_daily_challenge(current_topic, exam_goal)
-                st.session_state.daily_challenge = challenge_text
-                st.session_state.daily_challenge_date = today
+                st.session_state.daily_challenge        = challenge_text
+                st.session_state.daily_challenge_date   = today
                 st.session_state.daily_challenge_subject = current_topic
 
         if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-            st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>",
+                        unsafe_allow_html=True)
             if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
                 st.session_state.daily_challenge_completed = True
-                st.session_state.challenge_streak += 1
-                st.session_state.challenge_history.append({"date": str(today), "subject": current_topic, "completed": True})
+                st.session_state.challenge_streak         += 1
+                st.session_state.challenge_history.append(
+                    {"date": str(today), "subject": current_topic, "completed": True})
                 st.balloons()
                 st.toast(f"🎉 Challenge done! Streak: {st.session_state.challenge_streak}")
                 st.rerun()
         elif st.session_state.daily_challenge_completed:
-            st.markdown("<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>🎉 Come back tomorrow for a new one!</div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>"
+                "🎉 Come back tomorrow for a new one!</div>",
+                unsafe_allow_html=True)
 
         if st.session_state.challenge_history:
             st.divider()
             st.markdown("### 📊 This Week")
             this_week = [c for c in st.session_state.challenge_history
-                         if datetime.strptime(c["date"], "%Y-%m-%d").date() >= today - timedelta(days=7)]
+                         if datetime.strptime(c["date"],"%Y-%m-%d").date() >= today - timedelta(days=7)]
             done = sum(1 for c in this_week if c["completed"])
             st.markdown(f"✅ **{done}/7** challenges completed this week")
 
         st.divider()
         if st.button("🗑️ Clear This Chat", use_container_width=True):
             st.session_state.threads[st.session_state.current_thread] = []
-            st.session_state.awaiting_answer = False
+            st.session_state.awaiting_answer       = False
             st.session_state.last_socratic_question = None
-            st.session_state.original_question = None
-            st.session_state.last_followup_label = None
-            st.session_state.last_followup_prompt = None
+            st.session_state.original_question      = None
+            st.session_state.last_followup_label    = None
+            st.session_state.last_followup_prompt   = None
             st.rerun()
 
-        # Keep exam_goal/current_topic/test_date accessible for student main area
-        # (these are only defined inside the else block so we set them on session state)
-        st.session_state._sidebar_exam_goal    = exam_goal
-        st.session_state._sidebar_topic        = current_topic
-        st.session_state._sidebar_test_date    = test_date
+        st.session_state._sidebar_exam_goal  = exam_goal
+        st.session_state._sidebar_topic      = current_topic
+        st.session_state._sidebar_test_date  = test_date
 
 # ============================================================
 # MAIN AREA — STUDENT MODE
 # ============================================================
 if app_mode == "🎓 Student":
 
-    # Read values set by the student sidebar
     exam_goal     = st.session_state.get("_sidebar_exam_goal",  st.session_state.exam_goal)
     current_topic = st.session_state.get("_sidebar_topic",      st.session_state.current_topic)
     test_date     = st.session_state.get("_sidebar_test_date",  st.session_state.test_date)
 
-    # u2500u2500 DISPLAY CHAT u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500
     current_messages = st.session_state.threads[st.session_state.current_thread]
-    days_left = (st.session_state.test_date - date.today()).days
+    days_left        = (st.session_state.test_date - date.today()).days
 
     if not current_messages:
-        days_info = f"**{days_left} days** until your {st.session_state.exam_goal} exam!" if st.session_state.has_specific_date else "Learning at your own pace — no pressure!"
+        days_info    = (f"**{days_left} days** until your {st.session_state.exam_goal} exam!"
+                        if st.session_state.has_specific_date else "Learning at your own pace — no pressure!")
         subject_data = SUBJECT_CONTENT.get(st.session_state.current_topic, SUBJECT_CONTENT["Other"])
         welcome = f"""👋 Hey! I'm your FocusFlow coach.
 
@@ -1064,9 +1322,9 @@ I can help you:
         if message.get("hidden"):
             continue
 
-        msg_type = message.get("msg_type", "default")
+        msg_type   = message.get("msg_type", "default")
         is_correct = message.get("is_correct", False)
-        avatar = "🧠" if message["role"] == "assistant" else "🧑‍🎓"
+        avatar     = "🧠" if message["role"] == "assistant" else "🧑‍🎓"
 
         with st.chat_message(message["role"], avatar=avatar):
             if msg_type == "welcome":
@@ -1090,91 +1348,91 @@ I can help you:
             if message["role"] == "assistant" and "subject" in message:
                 st.markdown(f"<span class='subject-pill'>📚 {message['subject']}</span>", unsafe_allow_html=True)
 
-            # STUCK button
             if (message["role"] == "assistant" and
-                message.get("msg_type") == "socratic" and
-                not message.get("resolved", False)):
-                if st.button("⚡ Stuck? Get the cheat sheet", key=f"stuck_{st.session_state.current_thread}_{i}"):
+                    message.get("msg_type") == "socratic" and
+                    not message.get("resolved", False)):
+                if st.button("⚡ Stuck? Get the cheat sheet",
+                             key=f"stuck_{st.session_state.current_thread}_{i}"):
                     message["resolved"] = True
-                    st.session_state.awaiting_answer = False
-                    st.session_state.last_socratic_question = None
-                    weak_key = f"{st.session_state.current_topic}: {message.get('topic', 'General')}"
+                    st.session_state.awaiting_answer        = False
+                    st.session_state.last_socratic_question  = None
+                    weak_key = f"{st.session_state.current_topic}: {message.get('topic','General')}"
                     st.session_state.weak_areas[weak_key] = st.session_state.weak_areas.get(weak_key, 0) + 1
-                    trigger = f"[SYSTEM: Student clicked Stuck. Give cheat sheet for: {message.get('topic', 'topic')}]"
-                    current_messages.append({"role": "user", "content": trigger, "hidden": True, "msg_type": "system_trigger"})
+                    trigger = f"[SYSTEM: Student clicked Stuck. Give cheat sheet for: {message.get('topic','topic')}]"
+                    current_messages.append({"role":"user","content":trigger,"hidden":True,"msg_type":"system_trigger"})
                     with st.chat_message("assistant", avatar="🧠"):
                         with st.spinner("Generating cheat sheet..."):
-                            answer, _ = get_ai_response(trigger, "direct", message.get("topic", "General"))
-                            current_messages.append({"role": "assistant", "content": answer, "msg_type": "cheat_sheet",
-                                                     "topic": message.get("topic", "General"),
-                                                     "subject": st.session_state.current_topic, "resolved": True})
+                            answer, _ = get_ai_response(trigger, "direct", message.get("topic","General"))
+                            current_messages.append({
+                                "role":"assistant","content":answer,"msg_type":"cheat_sheet",
+                                "topic":message.get("topic","General"),
+                                "subject":st.session_state.current_topic,"resolved":True})
                     st.rerun()
 
-            # SMART FOLLOW-UP BUTTON
             is_last = (i == len(current_messages) - 1)
             if (message["role"] == "assistant" and is_last and
-                msg_type not in ("welcome", "socratic", "stats") and
-                st.session_state.last_followup_label):
+                    msg_type not in ("welcome","socratic","stats") and
+                    st.session_state.last_followup_label):
                 st.markdown("<div class='followup-btn'>", unsafe_allow_html=True)
                 if st.button(st.session_state.last_followup_label, key=f"followup_{i}"):
                     followup_prompt = st.session_state.last_followup_prompt
-                    st.session_state.last_followup_label = None
+                    st.session_state.last_followup_label  = None
                     st.session_state.last_followup_prompt = None
-                    current_messages.append({"role": "user", "content": followup_prompt, "msg_type": "user_question"})
+                    current_messages.append({"role":"user","content":followup_prompt,"msg_type":"user_question"})
                     with st.chat_message("assistant", avatar="🧠"):
                         with st.spinner("Thinking..."):
                             answer, mt = get_ai_response(followup_prompt, "direct", followup_prompt[:40])
-                            current_messages.append({"role": "assistant", "content": answer, "msg_type": mt,
-                                                     "subject": st.session_state.current_topic, "resolved": True})
+                            current_messages.append({
+                                "role":"assistant","content":answer,"msg_type":mt,
+                                "subject":st.session_state.current_topic,"resolved":True})
                             label, prompt_s = generate_followup(answer, st.session_state.current_topic)
-                            st.session_state.last_followup_label = label
+                            st.session_state.last_followup_label  = label
                             st.session_state.last_followup_prompt = prompt_s
                     st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── PENDING AI REQUESTS ───────────────────────────────
     if st.session_state.pending_ai_request:
         request = st.session_state.pending_ai_request
         st.session_state.pending_ai_request = None
         with st.chat_message("assistant", avatar="🧠"):
             with st.spinner("Thinking..."):
                 answer, msg_type = get_ai_response(request["prompt"], request["msg_type"], request["topic"])
-                current_messages.append({"role": "assistant", "content": answer, "msg_type": msg_type,
-                                         "topic": request["topic"], "subject": st.session_state.current_topic,
-                                         "resolved": True, "is_correct": False})
+                current_messages.append({
+                    "role":"assistant","content":answer,"msg_type":msg_type,
+                    "topic":request["topic"],"subject":st.session_state.current_topic,
+                    "resolved":True,"is_correct":False})
                 if msg_type == "socratic":
-                    st.session_state.awaiting_answer = True
-                    st.session_state.last_socratic_question = answer
+                    st.session_state.awaiting_answer        = True
+                    st.session_state.last_socratic_question  = answer
                 else:
                     label, prompt_s = generate_followup(answer, st.session_state.current_topic)
-                    st.session_state.last_followup_label = label
+                    st.session_state.last_followup_label  = label
                     st.session_state.last_followup_prompt = prompt_s
         st.rerun()
 
-    # ── CHAT INPUT ────────────────────────────────────────
     if prompt := st.chat_input("Ask a question..."):
         today = date.today()
         if st.session_state.last_study_date != today:
-            st.session_state.study_streak += 1
+            st.session_state.study_streak   += 1
             st.session_state.last_study_date = today
 
-        current_messages.append({"role": "user", "content": prompt, "msg_type": "user_question"})
+        current_messages.append({"role":"user","content":prompt,"msg_type":"user_question"})
 
-        user_msgs = [m for m in current_messages if m["role"] == "user" and not m.get("hidden")]
+        user_msgs = [m for m in current_messages if m["role"]=="user" and not m.get("hidden")]
         if len(user_msgs) == 1:
             st.session_state.original_question = prompt
 
         if st.session_state.awaiting_answer and st.session_state.last_socratic_question:
-            intent = "evaluate_answer"
+            intent    = "evaluate_answer"
             topic_tag = st.session_state.last_socratic_question[:40]
-            st.session_state.awaiting_answer = False
-            st.session_state.last_socratic_question = None
+            st.session_state.awaiting_answer        = False
+            st.session_state.last_socratic_question  = None
             for msg in reversed(current_messages):
                 if msg.get("msg_type") == "socratic" and not msg.get("resolved", False):
                     msg["resolved"] = True
                     break
         else:
-            intent = detect_intent(prompt)
+            intent    = detect_intent(prompt)
             topic_tag = prompt[:40]
 
         with st.chat_message("assistant", avatar="🧠"):
@@ -1188,48 +1446,47 @@ I can help you:
                         show_clap_celebration()
 
                 if msg_type == "socratic":
-                    st.session_state.awaiting_answer = True
-                    st.session_state.last_socratic_question = answer
-                    st.session_state.last_followup_label = None
-                    st.session_state.last_followup_prompt = None
+                    st.session_state.awaiting_answer        = True
+                    st.session_state.last_socratic_question  = answer
+                    st.session_state.last_followup_label    = None
+                    st.session_state.last_followup_prompt   = None
                 else:
                     label, prompt_s = generate_followup(answer, st.session_state.current_topic)
-                    st.session_state.last_followup_label = label
+                    st.session_state.last_followup_label  = label
                     st.session_state.last_followup_prompt = prompt_s
 
                 final_msg_type = "evaluate_answer" if intent == "evaluate_answer" else msg_type
                 current_messages.append({
-                    "role": "assistant", "content": answer,
-                    "msg_type": final_msg_type, "topic": topic_tag,
-                    "subject": st.session_state.current_topic,
-                    "resolved": True, "is_correct": is_correct
+                    "role":"assistant","content":answer,
+                    "msg_type":final_msg_type,"topic":topic_tag,
+                    "subject":st.session_state.current_topic,
+                    "resolved":True,"is_correct":is_correct
                 })
         st.rerun()
 
-    # ── QUICK ACTION BUTTONS ──────────────────────────────
     st.divider()
     qa_col1, qa_col2, qa_col3, qa_col4 = st.columns(4)
 
     with qa_col1:
         if st.button("📄 Cheat Sheet", use_container_width=True):
             p = f"Give me a comprehensive cheat sheet for {st.session_state.current_topic} ({st.session_state.exam_goal})"
-            current_messages.append({"role": "user", "content": p, "msg_type": "user_question"})
-            st.session_state.pending_ai_request = {"prompt": p, "msg_type": "direct", "topic": f"{st.session_state.current_topic} Cheat Sheet"}
+            current_messages.append({"role":"user","content":p,"msg_type":"user_question"})
+            st.session_state.pending_ai_request = {"prompt":p,"msg_type":"direct","topic":f"{st.session_state.current_topic} Cheat Sheet"}
             st.rerun()
 
     with qa_col2:
         if st.button("📝 Mock Test", use_container_width=True):
             p = f"Generate 5 practice questions for {st.session_state.current_topic} ({st.session_state.exam_goal}) with answers and explanations"
-            current_messages.append({"role": "user", "content": p, "msg_type": "user_question"})
-            st.session_state.pending_ai_request = {"prompt": p, "msg_type": "direct", "topic": f"{st.session_state.current_topic} Mock Test"}
+            current_messages.append({"role":"user","content":p,"msg_type":"user_question"})
+            st.session_state.pending_ai_request = {"prompt":p,"msg_type":"direct","topic":f"{st.session_state.current_topic} Mock Test"}
             st.rerun()
 
     with qa_col3:
         if st.button("📊 My Stats", use_container_width=True):
-            total_msgs = sum(len(msgs) for msgs in st.session_state.threads.values())
+            total_msgs  = sum(len(msgs) for msgs in st.session_state.threads.values())
             weak_topics = list(st.session_state.weak_areas.keys())[:3]
-            focus_time = st.session_state.total_study_minutes
-            stats_msg = f"""📊 Your FocusFlow Stats
+            focus_time  = st.session_state.total_study_minutes
+            stats_msg   = f"""📊 Your FocusFlow Stats
 
 🔥 **Study Streak:** {st.session_state.study_streak} days
 ⏱️ **Focus Time:** {focus_time} minutes ({focus_time // 60}h {focus_time % 60}m)
@@ -1237,7 +1494,7 @@ I can help you:
 ⚠️ **Focus Areas:** {', '.join(weak_topics) if weak_topics else 'None yet — keep going!'}
 
 Keep crushing it! 🚀"""
-            current_messages.append({"role": "assistant", "content": stats_msg, "msg_type": "stats", "subject": "System"})
+            current_messages.append({"role":"assistant","content":stats_msg,"msg_type":"stats","subject":"System"})
             st.rerun()
 
     with qa_col4:
@@ -1245,14 +1502,20 @@ Keep crushing it! 🚀"""
             chat_text = []
             for msg in current_messages:
                 if not msg.get("hidden"):
-                    prefix = "🧑‍🎓 You" if msg["role"] == "user" else "🧠 FocusFlow"
+                    prefix = "🧑‍🎓 You" if msg["role"]=="user" else "🧠 FocusFlow"
                     chat_text.append(f"{prefix}:\n{msg['content']}")
-            export_text = (f"FocusFlow Chat Export\n{'='*50}\nExam: {st.session_state.exam_goal}\n"
-                           f"Subject: {st.session_state.current_topic}\nDate: {date.today()}\n{'='*50}\n\n"
-                           + "\n\n---\n\n".join(chat_text))
-            st.download_button("📥 Download Chat", export_text,
-                               file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt",
-                               mime="text/plain", use_container_width=True)
+            export_text = (
+                f"FocusFlow Chat Export\n{'='*50}\n"
+                f"Exam: {st.session_state.exam_goal}\n"
+                f"Subject: {st.session_state.current_topic}\n"
+                f"Date: {date.today()}\n{'='*50}\n\n"
+                + "\n\n---\n\n".join(chat_text)
+            )
+            st.download_button(
+                "📥 Download Chat", export_text,
+                file_name=f"focusflow_{st.session_state.current_thread}_{date.today()}.txt",
+                mime="text/plain", use_container_width=True
+            )
 
 # ============================================================
 # MAIN AREA — PARENT MODE
