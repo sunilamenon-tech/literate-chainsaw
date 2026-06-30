@@ -445,11 +445,23 @@ def run_parent_analysis(child_name, child_grade, child_subject, extra_notes, upl
         payload = {
             "contents": [{"role": "user", "parts": parts}],
             "systemInstruction": {"parts": [{"text": PARENT_SYSTEM_PROMPT}]},
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2500}
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8000}
         }
-        r = requests.post(url, json=payload, timeout=60).json()
+        r = requests.post(url, json=payload, timeout=90).json()
         if "candidates" in r and r["candidates"]:
-            result_text = r["candidates"][0]["content"]["parts"][0]["text"]
+            candidate = r["candidates"][0]
+            finish_reason = candidate.get("finishReason", "")
+            if "content" not in candidate or "parts" not in candidate["content"]:
+                raise Exception(
+                    f"Gemini stopped before producing output (finishReason: {finish_reason}). "
+                    f"Try a clearer photo or fewer questions."
+                )
+            result_text = candidate["content"]["parts"][0]["text"]
+            if finish_reason == "MAX_TOKENS":
+                raise Exception(
+                    "The response was cut off because it got too long (too many questions). "
+                    "Try uploading a shorter test paper, or split it into sections."
+                )
         else:
             raise Exception(f"Google Vision API error: {r.get('error', r)}")
 
@@ -475,8 +487,21 @@ def run_parent_analysis(child_name, child_grade, child_subject, extra_notes, upl
             PARENT_SYSTEM_PROMPT
         )
 
+    # ── Robust JSON extraction ──
     clean = result_text.strip().replace("```json", "").replace("```", "").strip()
-    data  = json.loads(clean)
+    # If there's stray text before/after the JSON object, extract just the {...} block
+    first_brace = clean.find("{")
+    last_brace  = clean.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        clean = clean[first_brace:last_brace + 1]
+    try:
+        data = json.loads(clean)
+    except json.JSONDecodeError as e:
+        # Surface the raw text so we can see what went wrong instead of a blind failure
+        raise Exception(
+            f"Could not parse AI response as JSON ({str(e)}). "
+            f"Raw response started with: {clean[:300]}"
+        )
     return data
 
 
@@ -836,9 +861,6 @@ def show_parent_analyzer():
                 st.session_state.parent_child_name = child_name
                 synced = sync_weak_areas_to_student(data)
                 st.toast(f"✅ Done! {synced} weak area(s) synced to student profile.", icon="🎯")
-            except json.JSONDecodeError:
-                st.error("AI returned unexpected response. Please try again.")
-                return
             except Exception as e:
                 st.error(f"Analysis failed: {str(e)}")
                 return
