@@ -175,13 +175,13 @@ if not api_config:
     try:
         key = st.secrets["GOOGLE_API_KEY"]
         if key and len(key) > 10:
-            api_config = {"provider": "google", "key": key, "model": "gemini-2.0-flash", "url": None}
+            api_config = {"provider": "google", "key": key, "model": "gemini-1.5-flash", "url": None}
     except: pass
 
 try:
     key = st.secrets["GOOGLE_API_KEY"]
     if key and len(key) > 10:
-        vision_config = {"provider": "google", "key": key, "model": "gemini-2.0-flash"}
+        vision_config = {"provider": "google", "key": key, "model": "gemini-1.5-flash"}
 except: pass
 
 if not api_config:
