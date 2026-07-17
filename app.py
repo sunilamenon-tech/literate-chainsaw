@@ -220,6 +220,9 @@ defaults = {
     "last_followup_prompt": None,
     "parent_analysis": None,
     "app_mode": "🎓 Student",
+    # ── Mistake Journal (new) ──
+    "mistake_log": [],        # list of individual mistake entries, newest last
+    "mistake_clusters": {},   # key -> {count, severity, topic, error_type, last_date, resolved}
 }
 for key, value in defaults.items():
     if key not in st.session_state:
@@ -978,6 +981,107 @@ def check_if_correct(ai_response: str) -> bool:
     return any(p in ai_response.lower() for p in positive)
 
 # ============================================================
+# MISTAKE JOURNAL — classification engine (NEW, additive)
+# ============================================================
+MISTAKE_CLASSIFY_SYSTEM_PROMPT = """You are FocusFlow's mistake classifier for a student's Socratic practice answers.
+Given the diagnostic question that was asked, the student's answer, and the tutor's explanation of
+what was right/wrong, classify the mistake. Return ONLY a valid JSON object, no markdown fences, no extra text.
+
+JSON structure:
+{
+  "errorType": "Conceptual Gap",
+  "specificMistake": "One sentence naming the exact misunderstanding, referencing the actual question/answer",
+  "severity": "medium"
+}
+
+Rules:
+- errorType: pick whichever label fits best. Examples: "Conceptual Gap", "Sign Error", "Calculation Slip",
+  "Misread Question", "Wrong Formula Applied", "Rushed Answer", "Memory Error", "Unit Error",
+  "Incomplete Steps", "Overconfidence Error" — or invent a better one. Keep it 1-3 words.
+- specificMistake: name the EXACT misunderstanding shown by this answer, not a generic description.
+- severity: "high" (fundamental gap, needs re-teaching), "medium" (partial understanding, needs practice),
+  or "low" (likely a one-off slip).
+- Return ONLY the JSON object."""
+
+
+def classify_mistake(question_text, student_answer, tutor_explanation):
+    """Call the AI to classify why a Socratic answer was wrong. Returns dict or None on failure."""
+    prompt = (
+        f"Diagnostic question asked: {question_text}\n\n"
+        f"Student's answer: {student_answer}\n\n"
+        f"Tutor's explanation of the correct answer: {tutor_explanation[:600]}"
+    )
+    result = call_api([{"role": "user", "content": prompt}], MISTAKE_CLASSIFY_SYSTEM_PROMPT)
+    try:
+        clean = result.strip().replace("```json", "").replace("```", "").strip()
+        first_brace = clean.find("{")
+        last_brace  = clean.rfind("}")
+        if first_brace != -1 and last_brace != -1:
+            clean = clean[first_brace:last_brace + 1]
+        parsed = json.loads(clean)
+        if "errorType" in parsed and "severity" in parsed:
+            return parsed
+    except Exception:
+        pass
+    return None
+
+
+def log_mistake(subject, topic, question_text, student_answer, classification):
+    """Append to mistake_log and update the aggregated mistake_clusters. Additive only —
+    does not touch st.session_state.weak_areas, which keeps working exactly as before."""
+    error_type = classification.get("errorType", "Unknown")
+    specific   = classification.get("specificMistake", "")
+    severity   = classification.get("severity", "medium")
+
+    entry = {
+        "date": str(date.today()),
+        "subject": subject,
+        "topic": topic,
+        "question": question_text,
+        "student_answer": student_answer,
+        "error_type": error_type,
+        "specific_mistake": specific,
+        "severity": severity,
+        "resolved": False,
+    }
+    st.session_state.mistake_log.append(entry)
+
+    cluster_key = f"{subject}:{topic}:{error_type}"
+    cluster = st.session_state.mistake_clusters.get(cluster_key, {
+        "subject": subject, "topic": topic, "error_type": error_type,
+        "count": 0, "severity": severity, "resolved": False,
+    })
+    cluster["count"]      += 1
+    cluster["severity"]    = severity  # keep most recent severity read
+    cluster["last_date"]   = str(date.today())
+    cluster["resolved"]    = False     # a fresh mistake reopens a cluster
+    st.session_state.mistake_clusters[cluster_key] = cluster
+
+
+def resolve_mistake_cluster(cluster_key):
+    """Mark a cluster resolved — used once micro-retests exist; safe to call now too."""
+    if cluster_key in st.session_state.mistake_clusters:
+        st.session_state.mistake_clusters[cluster_key]["resolved"] = True
+
+
+def mistake_badge_color(error_type):
+    """Same idea as the Parent Analyzer's badge_color, kept as an independent copy
+    so the Parent Analyzer's own function is never touched."""
+    et = (error_type or "").lower()
+    if any(x in et for x in ["unattempted", "avoidance", "blank"]):
+        return "#E3F2FD", "#1565C0"
+    if any(x in et for x in ["sign", "calculation", "slip", "arithmetic"]):
+        return "#F3E5F5", "#6A1B9A"
+    if any(x in et for x in ["concept", "formula", "wrong formula", "memory"]):
+        return "#FFEBEE", "#C62828"
+    if any(x in et for x in ["misread", "rushed", "overconfidence", "careless"]):
+        return "#FFF8E1", "#F57F17"
+    if any(x in et for x in ["presentation", "incomplete", "skipped steps"]):
+        return "#ECEFF1", "#37474F"
+    return "#FFF3E0", "#E65100"
+
+
+# ============================================================
 # MAIN AI RESPONSE
 # ============================================================
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
@@ -1202,6 +1306,41 @@ with st.sidebar:
         else:
             st.caption("Keep studying to see your focus areas!")
 
+        # ── Mistake Journal (NEW) ──
+        st.divider()
+        st.markdown("### 🧾 Mistake Journal")
+        active_clusters = {
+            k: v for k, v in st.session_state.mistake_clusters.items()
+            if not v.get("resolved", False) and v.get("subject") == current_topic
+        }
+        if active_clusters:
+            sev_rank = {"high": 0, "medium": 1, "low": 2}
+            sorted_clusters = sorted(
+                active_clusters.items(),
+                key=lambda kv: (sev_rank.get(kv[1]["severity"], 1), -kv[1]["count"])
+            )
+            for key, c in sorted_clusters[:5]:
+                bg, fg = mistake_badge_color(c["error_type"])
+                st.markdown(
+                    f"<div style='background:{bg};border-radius:8px;padding:6px 10px;"
+                    f"margin-bottom:4px;font-size:12px'>"
+                    f"<b style='color:{fg}'>{c['error_type']}</b> · {c['topic']} "
+                    f"<span style='color:#9E9E9E'>×{c['count']}</span></div>",
+                    unsafe_allow_html=True
+                )
+            with st.expander("📖 View all logged mistakes"):
+                for entry in reversed(st.session_state.mistake_log[-15:]):
+                    if entry["subject"] != current_topic:
+                        continue
+                    st.markdown(
+                        f"**{entry['error_type']}** · {entry['topic']}  \n"
+                        f"<span style='font-size:12px;color:#546E7A'>{entry['specific_mistake']}</span>",
+                        unsafe_allow_html=True
+                    )
+                    st.caption(entry["date"])
+        else:
+            st.caption("No mistakes logged yet for this subject — they'll show up here after Socratic answers you get wrong.")
+
         st.divider()
         st.markdown("### 💬 Chat Threads")
         for thread_name in list(st.session_state.threads.keys()):
@@ -1424,6 +1563,7 @@ I can help you:
 
         if st.session_state.awaiting_answer and st.session_state.last_socratic_question:
             intent    = "evaluate_answer"
+            socratic_question_full = st.session_state.last_socratic_question  # NEW: kept for mistake journal
             topic_tag = st.session_state.last_socratic_question[:40]
             st.session_state.awaiting_answer        = False
             st.session_state.last_socratic_question  = None
@@ -1434,6 +1574,7 @@ I can help you:
         else:
             intent    = detect_intent(prompt)
             topic_tag = prompt[:40]
+            socratic_question_full = None  # NEW: only relevant for evaluate_answer
 
         with st.chat_message("assistant", avatar="🧠"):
             with st.spinner("Thinking..."):
@@ -1444,6 +1585,20 @@ I can help you:
                     is_correct = check_if_correct(answer)
                     if is_correct:
                         show_clap_celebration()
+                    else:
+                        # NEW: mistake journal — classify and log the wrong answer, silently.
+                        # Wrapped in try/except so a classification failure never breaks the chat.
+                        try:
+                            classification = classify_mistake(
+                                socratic_question_full or topic_tag, prompt, answer
+                            )
+                            if classification:
+                                log_mistake(
+                                    st.session_state.current_topic, topic_tag,
+                                    socratic_question_full or topic_tag, prompt, classification
+                                )
+                        except Exception:
+                            pass
 
                 if msg_type == "socratic":
                     st.session_state.awaiting_answer        = True
