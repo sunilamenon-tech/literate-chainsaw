@@ -223,6 +223,10 @@ defaults = {
     # ── Mistake Journal (new) ──
     "mistake_log": [],        # list of individual mistake entries, newest last
     "mistake_clusters": {},   # key -> {count, severity, topic, error_type, last_date, resolved}
+    # ── Timed Mock Tests (new) ──
+    "mock_test_active": None,     # dict describing the in-progress test, or None
+    "mock_test_history": [],      # list of completed test result dicts
+    "mock_test_last_result": None,  # most recently completed test, for showing analytics
 }
 for key, value in defaults.items():
     if key not in st.session_state:
@@ -269,6 +273,61 @@ def call_api(messages_list, system_prompt):
 
     except Exception as e:
         return f"❌ Error: {str(e)}"
+
+
+def call_api_large(messages_list, system_prompt, max_tokens=4000):
+    """Same as call_api, but with a higher token ceiling for outputs that need more room
+    (e.g. a 20-30 question mock test with explanations). Kept as a separate function so
+    call_api itself — used everywhere else — is never touched."""
+    provider = api_config["provider"]
+    model = api_config["model"]
+    try:
+        if provider == "groq":
+            msgs = [{"role": "system", "content": system_prompt}] + messages_list
+            payload = {"model": model, "messages": msgs, "temperature": 0.5, "max_tokens": max_tokens}
+            headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json"}
+            r = requests.post(api_config["url"], json=payload, headers=headers, timeout=60).json()
+            if 'choices' in r and r['choices']:
+                return r['choices'][0]['message']['content']
+            return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
+
+        elif provider == "openrouter":
+            msgs = [{"role": "system", "content": system_prompt}] + messages_list
+            payload = {"model": model, "messages": msgs, "temperature": 0.5, "max_tokens": max_tokens}
+            headers = {"Authorization": f"Bearer {api_config['key']}", "Content-Type": "application/json",
+                       "HTTP-Referer": "https://focusflow.app", "X-Title": "FocusFlow"}
+            r = requests.post(api_config["url"], json=payload, headers=headers, timeout=60).json()
+            if 'choices' in r and r['choices']:
+                return r['choices'][0]['message']['content']
+            return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
+
+        else:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_config['key']}"
+            google_msgs = []
+            all_msgs = [{"role": "system", "content": system_prompt}] + messages_list
+            for m in all_msgs:
+                role = "user" if m["role"] in ("user", "system") else "model"
+                google_msgs.append({"role": role, "parts": [{"text": m["content"]}]})
+            payload = {"contents": google_msgs, "generationConfig": {"temperature": 0.5, "maxOutputTokens": max_tokens}}
+            r = requests.post(url, json=payload, timeout=60).json()
+            if 'candidates' in r and r['candidates']:
+                return r['candidates'][0]['content']['parts'][0]['text']
+            return f"⚠️ Error: {r.get('error', {}).get('message', 'Unknown')}"
+
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+
+def extract_json_object(text):
+    """Small shared helper for the new features — strips markdown fences and pulls out
+    the {...} span before parsing. Existing JSON-extraction code elsewhere (Parent Analyzer,
+    mistake classifier) is left exactly as-is; this is only used by new code."""
+    clean = text.strip().replace("```json", "").replace("```", "").strip()
+    first_brace = clean.find("{")
+    last_brace  = clean.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        clean = clean[first_brace:last_brace + 1]
+    return json.loads(clean)
 
 # ============================================================
 # PARENT TEST ANALYZER
@@ -1082,6 +1141,341 @@ def mistake_badge_color(error_type):
 
 
 # ============================================================
+# TIMED MOCK TESTS + POST-TEST ANALYTICS (NEW, additive)
+# ============================================================
+
+def generate_timed_mock_test(subject, exam_goal, num_questions):
+    """Generate a full-length MCQ paper via the AI. Returns a list of question dicts."""
+    system_prompt = f"""You are FocusFlow's exam-paper generator for {exam_goal} students.
+Generate exactly {num_questions} multiple-choice questions for the subject: {subject},
+matching the difficulty and style of real {exam_goal} questions.
+Return ONLY a valid JSON object. No markdown fences, no preamble, no extra text.
+
+JSON structure:
+{{
+  "questions": [
+    {{
+      "id": "Q1",
+      "topic": "short topic name",
+      "question": "the question text",
+      "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
+      "correct_option": "B",
+      "explanation": "1-2 sentence explanation of why B is correct"
+    }}
+  ]
+}}
+
+Rules:
+- Exactly {num_questions} questions, numbered Q1 to Q{num_questions}
+- Cover a spread of topics within {subject}, not just one topic repeated
+- Each question must have exactly 4 options (A-D) and exactly one correct_option
+- Return ONLY the JSON object"""
+
+    result = call_api_large(
+        [{"role": "user", "content": f"Generate {num_questions} {subject} MCQs for {exam_goal}"}],
+        system_prompt,
+        max_tokens=min(4000 + num_questions * 60, 8000)
+    )
+    data = extract_json_object(result)
+    questions = data.get("questions", [])
+    if not questions:
+        raise Exception("No questions were generated — please try again.")
+    return questions
+
+
+def _mt_record_time(qid):
+    """on_change callback for each question's radio — approximates time spent per question
+    as the gap between consecutive answer selections."""
+    active = st.session_state.get("mock_test_active")
+    if not active:
+        return
+    now  = time.time()
+    last = active.get("last_interaction_time", active["start_time"])
+    active["question_times"][qid] = active["question_times"].get(qid, 0) + max(now - last, 0)
+    active["last_interaction_time"] = now
+
+
+def finish_mock_test():
+    """Score the active test, log every wrong answer into the mistake journal
+    (reusing classify_mistake / log_mistake exactly as built in Step 1), and store results."""
+    active = st.session_state.mock_test_active
+    if not active:
+        return
+    tid       = active["test_id"]
+    questions = active["questions"]
+    neg       = active["negative_marking"]
+    marks_correct = 4
+    marks_wrong   = -1 if neg else 0
+
+    breakdown, topic_time = [], {}
+    total_obtained = total_max = 0
+    correct_count = wrong_count = unattempted_count = 0
+
+    for idx, q in enumerate(questions):
+        qid         = q.get("id", f"Q{idx+1}")
+        options     = q.get("options", {})
+        correct_opt = q.get("correct_option", "")
+        topic       = q.get("topic", "General")
+        key         = f"mt_{tid}_{qid}"
+
+        selected_label = st.session_state.get(key, "— Not answered —")
+        selected_opt = None
+        if selected_label and selected_label != "— Not answered —":
+            selected_opt = selected_label.split(")")[0].strip()
+
+        total_max += marks_correct
+        t_spent = round(active["question_times"].get(qid, 0), 1)
+        topic_time[topic] = round(topic_time.get(topic, 0) + t_spent, 1)
+
+        if selected_opt is None:
+            status, marks = "unattempted", 0
+            unattempted_count += 1
+        elif selected_opt == correct_opt:
+            status, marks = "correct", marks_correct
+            correct_count += 1
+        else:
+            status, marks = "wrong", marks_wrong
+            wrong_count += 1
+
+        total_obtained += marks
+        breakdown.append({
+            "id": qid, "topic": topic, "status": status,
+            "selected": selected_opt, "correct_option": correct_opt,
+            "time_spent": t_spent, "marks": marks,
+            "question": q.get("question", ""), "explanation": q.get("explanation", ""),
+        })
+
+        # Feed the mistake journal — same functions used by Socratic mode, untouched.
+        if status == "wrong":
+            try:
+                classification = classify_mistake(
+                    q.get("question", ""),
+                    f"Selected {selected_opt}) {options.get(selected_opt, '')}",
+                    f"Correct answer is {correct_opt}) {options.get(correct_opt, '')}. {q.get('explanation', '')}"
+                )
+                if classification:
+                    log_mistake(active["subject"], topic, q.get("question", ""), selected_label, classification)
+            except Exception:
+                pass
+
+    attempted = correct_count + wrong_count
+    accuracy  = round((correct_count / attempted) * 100, 1) if attempted > 0 else 0
+
+    result = {
+        "test_id": tid, "subject": active["subject"], "exam_goal": active["exam_goal"],
+        "date": str(date.today()), "total_questions": len(questions),
+        "correct": correct_count, "wrong": wrong_count, "unattempted": unattempted_count,
+        "accuracy": accuracy, "marks_obtained": total_obtained, "marks_max": total_max,
+        "duration_minutes": active["duration_minutes"],
+        "time_used_seconds": round(time.time() - active["start_time"], 1),
+        "topic_time": topic_time, "breakdown": breakdown,
+    }
+    st.session_state.mock_test_history.append(result)
+    st.session_state.mock_test_last_result = result
+    st.session_state.mock_test_active = None
+
+
+def render_active_test(active):
+    elapsed   = time.time() - active["start_time"]
+    remaining = active["duration_minutes"] * 60 - elapsed
+
+    if remaining <= 0:
+        st.warning("⏰ Time's up! Auto-submitting your test...")
+        finish_mock_test()
+        st.rerun()
+        return
+
+    mins, secs = divmod(int(remaining), 60)
+    st.markdown(f"<div class='streak-badge'>⏱️ {mins:02d}:{secs:02d} remaining</div>", unsafe_allow_html=True)
+    st.caption("Timer updates each time you answer a question. Negative marking: "
+               + ("ON (-1 per wrong)" if active["negative_marking"] else "OFF"))
+
+    tid = active["test_id"]
+    for idx, q in enumerate(active["questions"]):
+        qid = q.get("id", f"Q{idx+1}")
+        st.markdown(f"**{qid}. {q.get('question','')}**")
+        options = q.get("options", {})
+        option_labels = ["— Not answered —"] + [f"{k}) {v}" for k, v in options.items()]
+        st.radio(
+            "Choose answer", option_labels, key=f"mt_{tid}_{qid}",
+            label_visibility="collapsed", on_change=_mt_record_time, args=(qid,)
+        )
+        st.markdown("---")
+
+    if st.button("✅ Submit Test", use_container_width=True, type="primary", key=f"submit_{tid}"):
+        finish_mock_test()
+        st.rerun()
+
+
+def render_mock_test_results(result):
+    pct = round((result["marks_obtained"] / result["marks_max"]) * 100, 1) if result["marks_max"] else 0
+    score_bg = "#E8F5E9" if pct >= 75 else "#FFF3E0" if pct >= 50 else "#FFEBEE"
+    score_fg = "#2E7D32" if pct >= 75 else "#E65100" if pct >= 50 else "#C62828"
+
+    st.markdown(
+        f"<div style='background:{score_bg};border-left:5px solid {score_fg};"
+        f"padding:16px 18px;border-radius:12px;margin-bottom:14px'>"
+        f"<span style='font-size:28px;font-weight:800;color:{score_fg}'>"
+        f"{result['marks_obtained']}/{result['marks_max']}</span>"
+        f"&nbsp;&nbsp;<span style='color:#546E7A;font-size:14px'>({pct}%) · "
+        f"{result['subject']} · {result['total_questions']} questions</span></div>",
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("✅ Correct", result["correct"])
+    c2.metric("❌ Wrong", result["wrong"])
+    c3.metric("⏭️ Unattempted", result["unattempted"])
+    c4.metric("🎯 Accuracy", f"{result['accuracy']}%")
+
+    tab1, tab2 = st.tabs(["📋 Question Review", "⏱️ Time Analysis"])
+
+    with tab1:
+        for q in result["breakdown"]:
+            if q["status"] == "correct":
+                bg, fg, icon = "#E8F5E9", "#2E7D32", "✅"
+            elif q["status"] == "wrong":
+                bg, fg, icon = "#FFEBEE", "#C62828", "❌"
+            else:
+                bg, fg, icon = "#E3F2FD", "#1565C0", "⏭️"
+            st.markdown(
+                f"<div style='background:{bg};border-left:4px solid {fg};border-radius:8px;"
+                f"padding:10px 14px;margin-bottom:8px'>"
+                f"<b style='color:{fg}'>{icon} {q['id']}</b> "
+                f"<span style='font-size:12px;color:#546E7A'>· {q['topic']} · {q['time_spent']}s · {q['marks']:+d} marks</span>"
+                f"<div style='font-size:13px;color:#37474F;margin-top:4px'>{q['question']}</div>"
+                + (f"<div style='font-size:12px;color:#546E7A;margin-top:4px'>💬 {q['explanation']}</div>"
+                   if q["status"] != "correct" and q["explanation"] else "")
+                + "</div>", unsafe_allow_html=True
+            )
+
+    with tab2:
+        total_time_used = sum(q["time_spent"] for q in result["breakdown"])
+        avg_time = round(total_time_used / len(result["breakdown"]), 1) if result["breakdown"] else 0
+        st.markdown(f"**Average time per question:** {avg_time}s &nbsp;·&nbsp; "
+                    f"**Allotted:** {result['duration_minutes']} min")
+
+        st.markdown("**Time spent by topic**")
+        if result["topic_time"]:
+            max_t = max(result["topic_time"].values()) or 1
+            for topic, t in sorted(result["topic_time"].items(), key=lambda x: -x[1]):
+                width_pct = max(int((t / max_t) * 100), 4)
+                st.markdown(
+                    f"<div style='margin-bottom:6px'>"
+                    f"<span style='font-size:12px;color:#546E7A'>{topic} — {t}s</span>"
+                    f"<div style='background:#FFE4CC;border-radius:6px;height:10px;width:{width_pct}%'></div>"
+                    f"</div>", unsafe_allow_html=True
+                )
+
+        slow_wrong = [q for q in result["breakdown"]
+                      if q["status"] == "wrong" and q["time_spent"] > avg_time]
+        if slow_wrong:
+            st.warning(
+                f"⚠️ You spent above-average time on {len(slow_wrong)} question(s) you still got "
+                f"wrong ({', '.join(q['id'] for q in slow_wrong)}) — worth reviewing your approach, "
+                f"not just the concept."
+            )
+        fast_wrong = [q for q in result["breakdown"]
+                      if q["status"] == "wrong" and q["time_spent"] < avg_time * 0.5]
+        if fast_wrong:
+            st.info(
+                f"💡 {len(fast_wrong)} question(s) were answered quickly but wrong "
+                f"({', '.join(q['id'] for q in fast_wrong)}) — possible rushed/careless errors, "
+                f"not necessarily a concept gap."
+            )
+
+
+def render_job_landing(current_topic, exam_goal):
+    """The new homepage decision, matching the 'Choose a Task' split from the Whimsical flow.
+    Pure UI on top of existing session state and actions — no new data model, and every
+    button here either points at an existing feature or reuses an existing action exactly."""
+    st.markdown("#### What do you need right now?")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.markdown(
+            "<div class='socratic-box'><b>❓ Got a doubt?</b><br>"
+            "<span style='font-size:13px'>Type it in the chat box below — I'll check your "
+            "understanding first, then explain fully.</span></div>",
+            unsafe_allow_html=True
+        )
+
+    with c2:
+        st.markdown(
+            "<div class='challenge-box'><b>📝 Want to practice?</b><br>"
+            "<span style='font-size:13px'>Quick daily quiz, or a full timed test.</span></div>",
+            unsafe_allow_html=True
+        )
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            if st.button("🎯 Daily", use_container_width=True, key="land_daily"):
+                st.toast("🎯 Your Daily Challenge is in the sidebar!", icon="🎯")
+        with pc2:
+            if st.button("⏱️ Timed", use_container_width=True, key="land_timed"):
+                st.session_state.mt_force_open = True
+                st.rerun()
+
+    with c3:
+        st.markdown(
+            "<div class='cheat-sheet-box'><b>📄 Need quick notes?</b><br>"
+            "<span style='font-size:13px'>Instant structured cheat sheet.</span></div>",
+            unsafe_allow_html=True
+        )
+        if st.button("📄 Get Cheat Sheet", use_container_width=True, key="land_notes"):
+            p = f"Give me a comprehensive cheat sheet for {current_topic} ({exam_goal})"
+            current_messages = st.session_state.threads[st.session_state.current_thread]
+            current_messages.append({"role": "user", "content": p, "msg_type": "user_question"})
+            st.session_state.pending_ai_request = {
+                "prompt": p, "msg_type": "direct", "topic": f"{current_topic} Cheat Sheet"
+            }
+            st.rerun()
+
+
+def render_timed_mock_test_section(exam_goal, current_topic):
+    """Top-level entry point for this feature — a self-contained expander, inserted once
+    in the Student main area. Doesn't touch the chat code around it."""
+    has_active = st.session_state.mock_test_active is not None
+    force_open = st.session_state.get("mt_force_open", False)  # NEW: set by the landing cards
+    if force_open:
+        st.session_state.mt_force_open = False  # consume it — only forces open once
+    with st.expander("⏱️ Full-Length Timed Mock Test", expanded=has_active or force_open):
+        if st.session_state.mock_test_active is not None:
+            render_active_test(st.session_state.mock_test_active)
+        elif st.session_state.mock_test_last_result is not None:
+            render_mock_test_results(st.session_state.mock_test_last_result)
+            if st.button("🔄 Take Another Mock Test", use_container_width=True):
+                st.session_state.mock_test_last_result = None
+                st.rerun()
+        else:
+            st.caption("Simulate real exam conditions — timed, with negative marking, "
+                       "and full analytics after you submit.")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                num_q = st.selectbox("Number of questions", [10, 15, 20, 25, 30], index=1, key="mt_num_q")
+            with c2:
+                duration = st.number_input("Duration (minutes)", min_value=5, max_value=180,
+                                            value=num_q * 2, step=5, key="mt_duration")
+            with c3:
+                neg_marking = st.checkbox("Negative marking (-1/wrong)",
+                                           value=(exam_goal in ["JEE Main", "NEET"]), key="mt_neg")
+            if st.button("🚀 Start Timed Mock Test", use_container_width=True, type="primary"):
+                with st.spinner("Building your test paper..."):
+                    try:
+                        qs = generate_timed_mock_test(current_topic, exam_goal, num_q)
+                        st.session_state.mock_test_active = {
+                            "test_id": str(int(time.time())),
+                            "subject": current_topic, "exam_goal": exam_goal,
+                            "questions": qs, "start_time": time.time(),
+                            "last_interaction_time": time.time(),
+                            "duration_minutes": duration, "negative_marking": neg_marking,
+                            "question_times": {},
+                        }
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Couldn't generate the test: {e}")
+
+
+# ============================================================
 # MAIN AI RESPONSE
 # ============================================================
 def get_ai_response(prompt: str, msg_type: str, topic_tag: str):
@@ -1441,6 +1835,11 @@ if app_mode == "🎓 Student":
     current_messages = st.session_state.threads[st.session_state.current_thread]
     days_left        = (st.session_state.test_date - date.today()).days
 
+    render_job_landing(current_topic, exam_goal)               # NEW — additive, self-contained
+    st.divider()
+    render_timed_mock_test_section(exam_goal, current_topic)  # NEW — additive, self-contained
+    st.divider()
+
     if not current_messages:
         days_info    = (f"**{days_left} days** until your {st.session_state.exam_goal} exam!"
                         if st.session_state.has_specific_date else "Learning at your own pace — no pressure!")
@@ -1449,12 +1848,8 @@ if app_mode == "🎓 Student":
 
 **Current Setup:** {st.session_state.exam_goal} | {st.session_state.current_topic} | {days_info}
 
-I can help you:
-- 🧠 **Explain concepts** — Just ask "{subject_data['example_concept']}"
-- ❓ **Socratic mode** — I'll check your understanding first. Stuck? Click the button!
-- 📝 **Practice questions** — Quick mock tests
-
-**Try asking: "{subject_data['example_question']}"**"""
+Pick one of the three options above to get started, or just type your doubt below anytime —
+try "{subject_data['example_question']}\""""
         current_messages.append({"role": "assistant", "content": welcome, "msg_type": "welcome"})
 
     for i, message in enumerate(current_messages):
