@@ -1757,27 +1757,43 @@ with st.sidebar:
     # ── STUDENT SIDEBAR ──────────────────────────────────
     else:
         st.markdown("### 🎯 Your Goal")
-        exam_goal = st.selectbox("Exam/Goal",
-            ["JEE Main","NEET","10th Boards","12th Boards","UPSC","Other"],
-            index=["JEE Main","NEET","10th Boards","12th Boards","UPSC","Other"].index(st.session_state.exam_goal))
-        current_topic = st.selectbox("Subject",
-            ["Physics","Chemistry","Maths","Biology","English","History","Other"],
-            index=["Physics","Chemistry","Maths","Biology","English","History","Other"].index(st.session_state.current_topic))
 
-        if exam_goal == "Other":
+        def _on_subject_change():
+            # Live now — no separate 'Update Context' step. Switches thread immediately,
+            # the same side effect the old button used to perform on click.
+            new_subject = st.session_state.current_topic
+            if new_subject not in st.session_state.threads:
+                st.session_state.threads[new_subject] = []
+            st.session_state.current_thread = new_subject
+            st.toast(f"Switched to {new_subject}!")
+
+        st.selectbox("Exam/Goal",
+            ["JEE Main","NEET","10th Boards","12th Boards","UPSC","Other"],
+            key="exam_goal")
+        st.selectbox("Subject",
+            ["Physics","Chemistry","Maths","Biology","English","History","Other"],
+            key="current_topic", on_change=_on_subject_change)
+
+        if st.session_state.exam_goal == "Other":
             has_date = st.radio("Choose one:",
                 ["Yes, I have a test date","No, just learning"],
                 index=0 if st.session_state.has_specific_date else 1,
                 label_visibility="collapsed")
             st.session_state.has_specific_date = (has_date == "Yes, I have a test date")
             if st.session_state.has_specific_date:
-                test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
+                st.date_input("Test Date", min_value=date.today(), key="test_date")
             else:
-                test_date = date.today() + timedelta(days=365)
+                st.session_state.test_date = date.today() + timedelta(days=365)
                 st.caption("📌 Learning at your own pace!")
         else:
             st.session_state.has_specific_date = True
-            test_date = st.date_input("Test Date", value=st.session_state.test_date, min_value=date.today())
+            st.date_input("Test Date", min_value=date.today(), key="test_date")
+
+        # Local aliases — everything below in the sidebar keeps working unchanged, it just
+        # now reads the live, always-current values instead of a selectbox's return value.
+        exam_goal     = st.session_state.exam_goal
+        current_topic = st.session_state.current_topic
+        test_date     = st.session_state.test_date
 
         days_left = (test_date - date.today()).days
         if st.session_state.has_specific_date:
@@ -1785,15 +1801,7 @@ with st.sidebar:
             elif days_left <= 14: st.warning(f"⏰ {days_left} days left")
             else:                 st.info(f"📅 {days_left} days left")
 
-        if st.button("🔄 Update Context", use_container_width=True):
-            st.session_state.exam_goal    = exam_goal
-            st.session_state.current_topic = current_topic
-            st.session_state.test_date    = test_date
-            if current_topic not in st.session_state.threads:
-                st.session_state.threads[current_topic] = []
-            st.session_state.current_thread = current_topic
-            st.toast(f"Switched to {current_topic}!")
-            st.rerun()
+        st.caption("Changes here apply instantly across the whole app.")
 
         st.divider()
         st.markdown("### 🔌 AI Status")
@@ -1940,18 +1948,14 @@ with st.sidebar:
             st.session_state.last_followup_prompt   = None
             st.rerun()
 
-        st.session_state._sidebar_exam_goal  = exam_goal
-        st.session_state._sidebar_topic      = current_topic
-        st.session_state._sidebar_test_date  = test_date
-
 # ============================================================
 # MAIN AREA — STUDENT MODE
 # ============================================================
 if app_mode == "🎓 Student":
 
-    exam_goal     = st.session_state.get("_sidebar_exam_goal",  st.session_state.exam_goal)
-    current_topic = st.session_state.get("_sidebar_topic",      st.session_state.current_topic)
-    test_date     = st.session_state.get("_sidebar_test_date",  st.session_state.test_date)
+    exam_goal     = st.session_state.exam_goal
+    current_topic = st.session_state.current_topic
+    test_date     = st.session_state.test_date
 
     current_messages = st.session_state.threads[st.session_state.current_thread]
     days_left        = (st.session_state.test_date - date.today()).days
