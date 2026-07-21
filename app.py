@@ -209,6 +209,8 @@ defaults = {
     "daily_challenge_date": None,
     "daily_challenge_completed": False,
     "daily_challenge_subject": None,
+    "daily_challenge_id": None,      # NEW — namespaces widget keys so answers never leak across days
+    "daily_checked": False,          # NEW — whether "Check Answers" has been clicked for today's set
     "challenge_streak": 0,
     "last_challenge_completed_date": None,
     "challenge_history": [],
@@ -976,31 +978,45 @@ def show_parent_analyzer():
 # ============================================================
 # GENERATE DAILY CHALLENGE
 # ============================================================
-def generate_daily_challenge(subject, exam_goal):
+def generate_daily_challenge(subject, exam_goal, num_questions):
+    """Returns a list of MCQ dicts (same shape as generate_timed_mock_test), so answers
+    can actually be checked. Replaces the old markdown-text version — no caller keeps the
+    old 2-argument signature, so this is a clean swap, not a parallel function."""
     system_prompt = f"""You are FocusFlow, an expert tutor for {exam_goal} students.
-Generate exactly 5 practice questions for the subject: {subject}.
+Generate exactly {num_questions} quick multiple-choice practice questions for the subject: {subject}.
+Keep them lighter and quicker than a full exam paper — this is a daily warm-up, not a mock test.
+Return ONLY a valid JSON object. No markdown fences, no preamble, no extra text.
+
+JSON structure:
+{{
+  "questions": [
+    {{
+      "id": "Q1",
+      "topic": "short topic name",
+      "question": "the question text",
+      "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
+      "correct_option": "B",
+      "explanation": "1 short sentence explaining why B is correct"
+    }}
+  ]
+}}
+
 Rules:
-- Specific to {subject}, relevant for {exam_goal}
-- Mix of MCQ and short answer
-- Clearly numbered, no answers included
+- Exactly {num_questions} questions, numbered Q1 to Q{num_questions}
+- Cover a spread of topics within {subject}
+- Each question must have exactly 4 options (A-D) and exactly one correct_option
+- Return ONLY the JSON object"""
 
-Format EXACTLY like this:
-**🎯 Today's Challenge: {subject} — 5 Questions**
-
-**Q1.** [Question]
-A) option  B) option  C) option  D) option
-
-**Q2.** [Question]
-A) option  B) option  C) option  D) option
-
-**Q3.** [Short answer question]
-
-**Q4.** [Question]
-A) option  B) option  C) option  D) option
-
-**Q5.** [Short answer question]
-"""
-    return call_api([{"role": "user", "content": f"Generate 5 {subject} questions for {exam_goal}"}], system_prompt)
+    result = call_api_large(
+        [{"role": "user", "content": f"Generate {num_questions} quick {subject} questions for {exam_goal}"}],
+        system_prompt,
+        max_tokens=min(3000 + num_questions * 60, 6000)
+    )
+    data = extract_json_object(result)
+    questions = data.get("questions", [])
+    if not questions:
+        raise Exception("No questions were generated — please try again.")
+    return questions
 
 # ============================================================
 # GENERATE SMART FOLLOW-UP
@@ -1389,7 +1405,21 @@ def render_job_landing(current_topic, exam_goal):
     """The new homepage decision, matching the 'Choose a Task' split from the Whimsical flow.
     Pure UI on top of existing session state and actions — no new data model, and every
     button here either points at an existing feature or reuses an existing action exactly."""
-    st.markdown("#### What do you need right now?")
+    st.markdown(
+        "<div style='display:flex;justify-content:center;margin-bottom:2px;'>"
+        "<div style='width:26px;height:26px;background:#FEF6E0;border:1.5px solid #FFC107;"
+        "transform:rotate(45deg);'></div></div>"
+        "<div style='text-align:center;font-size:12px;color:#8A8A72;margin-bottom:2px;'>Choose a task</div>",
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        "<svg width='100%' viewBox='0 0 600 34' style='display:block;margin-bottom:4px;'>"
+        "<path d='M300 0 L300 12 L100 12 L100 34' fill='none' stroke='#D8CFB8' stroke-width='1'/>"
+        "<path d='M300 0 L300 34' fill='none' stroke='#D8CFB8' stroke-width='1'/>"
+        "<path d='M300 0 L300 12 L500 12 L500 34' fill='none' stroke='#D8CFB8' stroke-width='1'/>"
+        "</svg>",
+        unsafe_allow_html=True
+    )
     c1, c2, c3 = st.columns(3)
 
     with c1:
@@ -1433,26 +1463,86 @@ def render_job_landing(current_topic, exam_goal):
             st.rerun()
 
 
-def render_daily_challenge_section(current_topic):
-    """Surfaces the Daily Challenge in the main area too, next to the Timed Mock Test.
-    Reads/mutates the exact same session_state keys the sidebar already uses — the sidebar
-    generates the challenge and is left completely untouched; this is a second place to
-    view and complete the same challenge, not a duplicate generator."""
+def render_daily_challenge_section(current_topic, exam_goal):
+    """The Daily Challenge is now a real gradable quiz, not a read-only text block, so it
+    only lives here in the main area — the sidebar shows a compact status + link instead
+    of a second interactive copy (two independently-answerable copies of the same quiz
+    would silently drift out of sync with each other, which is worse than one clear place)."""
     force_open = st.session_state.get("daily_force_open", False)
     if force_open:
         st.session_state.daily_force_open = False  # consume it — only forces open once
     with st.expander("🎯 Daily Challenge", expanded=force_open):
+
         if st.session_state.daily_challenge_completed:
             st.markdown(
                 "<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>"
                 "🎉 Come back tomorrow for a new one!</div>",
                 unsafe_allow_html=True
             )
-        elif st.session_state.daily_challenge:
-            st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>",
-                        unsafe_allow_html=True)
-            if st.button("✅ Mark as Complete", use_container_width=True, type="primary",
-                         key="mainarea_mark_complete"):
+            return
+
+        if not st.session_state.daily_challenge:
+            st.caption("Quick, untimed practice — pick how many questions.")
+            num_q = st.radio("Number of questions", [5, 10], horizontal=True, key="dc_num_q")
+            if st.button("🚀 Start Daily Challenge", use_container_width=True, type="primary"):
+                with st.spinner("Building today's questions..."):
+                    try:
+                        qs = generate_daily_challenge(current_topic, exam_goal, num_q)
+                        st.session_state.daily_challenge = qs
+                        st.session_state.daily_challenge_id = str(int(time.time()))
+                        st.session_state.daily_challenge_date = date.today()
+                        st.session_state.daily_challenge_subject = current_topic
+                        st.session_state.daily_checked = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Couldn't generate the challenge: {e}")
+            return
+
+        questions = st.session_state.daily_challenge
+        cid = st.session_state.daily_challenge_id
+        checked = st.session_state.daily_checked
+
+        for idx, q in enumerate(questions):
+            qid = q.get("id", f"Q{idx+1}")
+            st.markdown(f"**{qid}. {q.get('question','')}**")
+            options = q.get("options", {})
+            option_labels = ["— Not answered —"] + [f"{k}) {v}" for k, v in options.items()]
+            key = f"dc_{cid}_{qid}"
+            selected = st.radio("Choose answer", option_labels, key=key,
+                                 label_visibility="collapsed", disabled=checked)
+            if checked:
+                correct_opt = q.get("correct_option", "")
+                selected_opt = selected.split(")")[0].strip() if selected != "— Not answered —" else None
+                if selected_opt == correct_opt:
+                    st.success(f"Correct — {q.get('explanation','')}")
+                else:
+                    st.error(f"Correct answer: {correct_opt}) {options.get(correct_opt,'')} — {q.get('explanation','')}")
+            st.markdown("---")
+
+        if not checked:
+            if st.button("✅ Check Answers", use_container_width=True, type="primary", key="dc_check"):
+                st.session_state.daily_checked = True
+                st.rerun()
+        else:
+            if st.button("🎉 Finish & Update Streak", use_container_width=True, type="primary", key="dc_finish"):
+                for idx, q in enumerate(questions):
+                    qid = q.get("id", f"Q{idx+1}")
+                    options = q.get("options", {})
+                    correct_opt = q.get("correct_option", "")
+                    topic = q.get("topic", "General")
+                    selected_label = st.session_state.get(f"dc_{cid}_{qid}", "— Not answered —")
+                    selected_opt = selected_label.split(")")[0].strip() if selected_label != "— Not answered —" else None
+                    if selected_opt != correct_opt:
+                        try:
+                            classification = classify_mistake(
+                                q.get("question", ""),
+                                f"Selected {selected_label}",
+                                f"Correct answer is {correct_opt}) {options.get(correct_opt, '')}. {q.get('explanation', '')}"
+                            )
+                            if classification:
+                                log_mistake(current_topic, topic, q.get("question", ""), selected_label, classification)
+                        except Exception:
+                            pass
                 today = date.today()
                 st.session_state.daily_challenge_completed = True
                 st.session_state.challenge_streak += 1
@@ -1461,8 +1551,6 @@ def render_daily_challenge_section(current_topic):
                 st.balloons()
                 st.toast(f"🎉 Challenge done! Streak: {st.session_state.challenge_streak}")
                 st.rerun()
-        else:
-            st.caption("Your Daily Challenge is generating in the sidebar — check back in a moment.")
 
 
 def render_timed_mock_test_section(exam_goal, current_topic):
@@ -1792,12 +1880,16 @@ with st.sidebar:
             st.session_state.daily_challenge          = None
             st.session_state.daily_challenge_completed = False
             st.session_state.daily_challenge_subject   = None
+            st.session_state.daily_challenge_id        = None
+            st.session_state.daily_checked             = False
 
         if (st.session_state.daily_challenge_subject and
                 st.session_state.daily_challenge_subject != current_topic):
             st.session_state.daily_challenge          = None
             st.session_state.daily_challenge_completed = False
             st.session_state.daily_challenge_subject   = None
+            st.session_state.daily_challenge_id        = None
+            st.session_state.daily_checked             = False
 
         if st.session_state.daily_challenge_date:
             yesterday = today - timedelta(days=1)
@@ -1811,29 +1903,24 @@ with st.sidebar:
                 f"<div class='streak-badge'>{flame} {st.session_state.challenge_streak} day challenge streak!</div>",
                 unsafe_allow_html=True)
 
-        if not st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-            with st.spinner("📝 Generating today's challenge..."):
-                challenge_text = generate_daily_challenge(current_topic, exam_goal)
-                st.session_state.daily_challenge        = challenge_text
-                st.session_state.daily_challenge_date   = today
-                st.session_state.daily_challenge_subject = current_topic
-
-        if st.session_state.daily_challenge and not st.session_state.daily_challenge_completed:
-            st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>",
-                        unsafe_allow_html=True)
-            if st.button("✅ Mark as Complete", use_container_width=True, type="primary"):
-                st.session_state.daily_challenge_completed = True
-                st.session_state.challenge_streak         += 1
-                st.session_state.challenge_history.append(
-                    {"date": str(today), "subject": current_topic, "completed": True})
-                st.balloons()
-                st.toast(f"🎉 Challenge done! Streak: {st.session_state.challenge_streak}")
-                st.rerun()
-        elif st.session_state.daily_challenge_completed:
+        # NEW: status + link only — the actual gradable quiz lives in the main area now,
+        # so a student can't end up answering two independent, unsynced copies at once.
+        if st.session_state.daily_challenge_completed:
             st.markdown(
                 "<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>"
                 "🎉 Come back tomorrow for a new one!</div>",
                 unsafe_allow_html=True)
+        elif st.session_state.daily_challenge:
+            st.caption(f"🎯 {len(st.session_state.daily_challenge)} questions ready — "
+                       f"{'checked, ready to finish' if st.session_state.daily_checked else 'not started'}")
+            if st.button("Open Daily Challenge", use_container_width=True, key="sidebar_open_daily"):
+                st.session_state.daily_force_open = True
+                st.rerun()
+        else:
+            st.caption("Not started yet today.")
+            if st.button("Open Daily Challenge", use_container_width=True, key="sidebar_open_daily"):
+                st.session_state.daily_force_open = True
+                st.rerun()
 
         if st.session_state.challenge_history:
             st.divider()
@@ -1871,7 +1958,7 @@ if app_mode == "🎓 Student":
 
     render_job_landing(current_topic, exam_goal)               # NEW — additive, self-contained
     st.divider()
-    render_daily_challenge_section(current_topic)              # NEW — additive, self-contained
+    render_daily_challenge_section(current_topic, exam_goal)   # NEW — additive, self-contained
     render_timed_mock_test_section(exam_goal, current_topic)  # NEW — additive, self-contained
     st.divider()
 
