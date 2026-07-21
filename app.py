@@ -1410,7 +1410,8 @@ def render_job_landing(current_topic, exam_goal):
         pc1, pc2 = st.columns(2)
         with pc1:
             if st.button("🎯 Daily", use_container_width=True, key="land_daily"):
-                st.toast("🎯 Your Daily Challenge is in the sidebar!", icon="🎯")
+                st.session_state.daily_force_open = True
+                st.rerun()
         with pc2:
             if st.button("⏱️ Timed", use_container_width=True, key="land_timed"):
                 st.session_state.mt_force_open = True
@@ -1430,6 +1431,38 @@ def render_job_landing(current_topic, exam_goal):
                 "prompt": p, "msg_type": "direct", "topic": f"{current_topic} Cheat Sheet"
             }
             st.rerun()
+
+
+def render_daily_challenge_section(current_topic):
+    """Surfaces the Daily Challenge in the main area too, next to the Timed Mock Test.
+    Reads/mutates the exact same session_state keys the sidebar already uses — the sidebar
+    generates the challenge and is left completely untouched; this is a second place to
+    view and complete the same challenge, not a duplicate generator."""
+    force_open = st.session_state.get("daily_force_open", False)
+    if force_open:
+        st.session_state.daily_force_open = False  # consume it — only forces open once
+    with st.expander("🎯 Daily Challenge", expanded=force_open):
+        if st.session_state.daily_challenge_completed:
+            st.markdown(
+                "<div class='challenge-complete'>✅ <b>Today's challenge done!</b><br>"
+                "🎉 Come back tomorrow for a new one!</div>",
+                unsafe_allow_html=True
+            )
+        elif st.session_state.daily_challenge:
+            st.markdown(f"<div class='challenge-box'>{st.session_state.daily_challenge}</div>",
+                        unsafe_allow_html=True)
+            if st.button("✅ Mark as Complete", use_container_width=True, type="primary",
+                         key="mainarea_mark_complete"):
+                today = date.today()
+                st.session_state.daily_challenge_completed = True
+                st.session_state.challenge_streak += 1
+                st.session_state.challenge_history.append(
+                    {"date": str(today), "subject": current_topic, "completed": True})
+                st.balloons()
+                st.toast(f"🎉 Challenge done! Streak: {st.session_state.challenge_streak}")
+                st.rerun()
+        else:
+            st.caption("Your Daily Challenge is generating in the sidebar — check back in a moment.")
 
 
 def render_timed_mock_test_section(exam_goal, current_topic):
@@ -1838,6 +1871,7 @@ if app_mode == "🎓 Student":
 
     render_job_landing(current_topic, exam_goal)               # NEW — additive, self-contained
     st.divider()
+    render_daily_challenge_section(current_topic)              # NEW — additive, self-contained
     render_timed_mock_test_section(exam_goal, current_topic)  # NEW — additive, self-contained
     st.divider()
 
