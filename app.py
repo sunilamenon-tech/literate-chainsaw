@@ -1393,10 +1393,11 @@ def render_job_landing(current_topic, exam_goal):
     c1, c2, c3 = st.columns(3)
 
     with c1:
+        example_q = SUBJECT_CONTENT.get(current_topic, SUBJECT_CONTENT["Other"])["example_question"]
         st.markdown(
             "<div class='socratic-box'><b>❓ Got a doubt?</b><br>"
             "<span style='font-size:13px'>Type it in the chat box below — I'll check your "
-            "understanding first, then explain fully.</span></div>",
+            f"understanding first, then explain fully. Try: \"{example_q}\"</span></div>",
             unsafe_allow_html=True
         )
 
@@ -1839,18 +1840,6 @@ if app_mode == "🎓 Student":
     st.divider()
     render_timed_mock_test_section(exam_goal, current_topic)  # NEW — additive, self-contained
     st.divider()
-
-    if not current_messages:
-        days_info    = (f"**{days_left} days** until your {st.session_state.exam_goal} exam!"
-                        if st.session_state.has_specific_date else "Learning at your own pace — no pressure!")
-        subject_data = SUBJECT_CONTENT.get(st.session_state.current_topic, SUBJECT_CONTENT["Other"])
-        welcome = f"""👋 Hey! I'm your FocusFlow coach.
-
-**Current Setup:** {st.session_state.exam_goal} | {st.session_state.current_topic} | {days_info}
-
-Pick one of the three options above to get started, or just type your doubt below anytime —
-try "{subject_data['example_question']}\""""
-        current_messages.append({"role": "assistant", "content": welcome, "msg_type": "welcome"})
 
     for i, message in enumerate(current_messages):
         if message.get("hidden"):
